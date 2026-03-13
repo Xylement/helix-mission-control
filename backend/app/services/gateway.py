@@ -1,0 +1,662 @@
+"""
+OpenClaw Gateway WebSocket client.
+
+Connects to the OpenClaw Gateway using its native protocol (type: "req"/"res"/"event"),
+dispatches tasks to AI agents via chat.send, and processes streaming results.
+"""
+
+import asyncio
+import json
+import logging
+import re
+import uuid
+from datetime import datetime, timezone
+
+import redis.asyncio as aioredis
+import websockets
+from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
+
+from app.core.config import settings
+from app.core.database import async_session
+from app.models.agent import Agent
+from app.models.task import Task
+from app.models.user import User
+from app.models.comment import Comment
+from app.models.activity import ActivityLog
+
+logger = logging.getLogger("helix.gateway")
+
+REDIS_ACTIVE_CHATS_KEY = "helix:gateway:active_chats"
+
+
+class OpenClawGateway:
+    def __init__(self):
+        self.ws = None
+        self._running = False
+        self._pending: dict[str, asyncio.Future] = {}  # req_id -> future
+        self._active_chats: dict[str, dict] = {}  # session_key -> {task_id, text, ...}
+        self._receive_task: asyncio.Task | None = None
+        self._reconnect_task: asyncio.Task | None = None
+        self._agent_id_map: dict[str, str] = {}  # agent name -> gateway agent ID
+        self._instance_id = str(uuid.uuid4())
+        self._redis: aioredis.Redis | None = None
+
+    async def _get_redis(self) -> aioredis.Redis:
+        if self._redis is None:
+            self._redis = aioredis.from_url(settings.REDIS_URL)
+        return self._redis
+
+    async def _save_active_chat(self, session_key: str, chat_data: dict):
+        """Persist an active chat to Redis."""
+        try:
+            r = await self._get_redis()
+            # Store only serializable fields (no accumulated text)
+            persist = {k: v for k, v in chat_data.items() if k != "text"}
+            await r.hset(REDIS_ACTIVE_CHATS_KEY, session_key, json.dumps(persist))
+        except Exception as e:
+            logger.warning("Failed to save active chat to Redis: %s", e)
+
+    async def _remove_active_chat(self, session_key: str):
+        """Remove an active chat from Redis."""
+        try:
+            r = await self._get_redis()
+            await r.hdel(REDIS_ACTIVE_CHATS_KEY, session_key)
+        except Exception as e:
+            logger.warning("Failed to remove active chat from Redis: %s", e)
+
+    async def _restore_active_chats(self):
+        """Restore active chats from Redis after a restart."""
+        try:
+            r = await self._get_redis()
+            stored = await r.hgetall(REDIS_ACTIVE_CHATS_KEY)
+            if not stored:
+                return
+            for session_key_bytes, data_bytes in stored.items():
+                session_key = session_key_bytes.decode() if isinstance(session_key_bytes, bytes) else session_key_bytes
+                data = json.loads(data_bytes)
+                data["text"] = ""  # Reset accumulated text
+                self._active_chats[session_key] = data
+                logger.info("Restored active chat: session=%s task=%d agent=%s",
+                            session_key, data.get("task_id"), data.get("agent_name"))
+            if stored:
+                logger.info("Restored %d active chat(s) from Redis", len(stored))
+        except Exception as e:
+            logger.warning("Failed to restore active chats from Redis: %s", e)
+
+    async def _recover_stuck_tasks(self):
+        """On startup, reset any tasks/agents stuck from a previous crash."""
+        async with async_session() as db:
+            # Find tasks stuck in in_progress with a busy agent
+            stmt = (
+                select(Task)
+                .options(selectinload(Task.assigned_agent))
+                .where(and_(
+                    Task.status == "in_progress",
+                    Task.assigned_agent_id.isnot(None),
+                ))
+            )
+            stuck_tasks = (await db.execute(stmt)).scalars().all()
+
+            # Check which ones are NOT tracked in _active_chats (truly orphaned)
+            tracked_task_ids = {chat["task_id"] for chat in self._active_chats.values()}
+
+            for task in stuck_tasks:
+                if task.id in tracked_task_ids:
+                    continue  # Still being tracked via Redis restore — let it finish
+
+                logger.warning("Recovering stuck task %d (%s) — resetting to todo, agent %s -> online",
+                               task.id, task.title, task.assigned_agent.name if task.assigned_agent else "?")
+
+                task.status = "todo"
+                task.updated_at = datetime.now(timezone.utc)
+                if task.assigned_agent and task.assigned_agent.status == "busy":
+                    task.assigned_agent.status = "online"
+
+                db.add(ActivityLog(
+                    actor_type="system",
+                    actor_id=None,
+                    action="task.recovered",
+                    entity_type="task",
+                    entity_id=task.id,
+                    details={"reason": "stuck after restart"},
+                    org_id=task.assigned_agent.org_id if task.assigned_agent else None,
+                ))
+
+            if stuck_tasks:
+                await db.commit()
+                recovered = len([t for t in stuck_tasks if t.id not in tracked_task_ids])
+                if recovered:
+                    logger.info("Recovered %d stuck task(s)", recovered)
+
+    async def _send_and_recv(self, method: str, params: dict, timeout: float = 15) -> dict | None:
+        """Send a request and directly wait for the matching response.
+        Used during initial handshake before the receive loop is running.
+        """
+        req_id = str(uuid.uuid4())
+        msg = {"type": "req", "id": req_id, "method": method, "params": params}
+        await self.ws.send(json.dumps(msg))
+
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            remaining = deadline - asyncio.get_event_loop().time()
+            raw = await asyncio.wait_for(self.ws.recv(), timeout=remaining)
+            data = json.loads(raw)
+            if data.get("type") == "res" and data.get("id") == req_id:
+                if data.get("ok"):
+                    return data.get("payload", {})
+                error = data.get("error", {})
+                raise Exception(f"{error.get('code')}: {error.get('message')}")
+            # Skip non-matching messages (events, other responses)
+        return None
+
+    async def connect(self) -> bool:
+        """Connect to the OpenClaw Gateway and authenticate."""
+        try:
+            self.ws = await websockets.connect(
+                settings.OPENCLAW_GATEWAY_URL,
+                ping_interval=30,
+                ping_timeout=10,
+                close_timeout=5,
+            )
+
+            # Read and discard the connect.challenge
+            challenge = await asyncio.wait_for(self.ws.recv(), timeout=10)
+            data = json.loads(challenge)
+            if data.get("event") != "connect.challenge":
+                logger.warning("Unexpected first message: %s", data.get("event"))
+
+            # Send connect request (direct send/recv, no receive loop yet)
+            connect_resp = await self._send_and_recv("connect", {
+                "minProtocol": 3,
+                "maxProtocol": 3,
+                "client": {
+                    "id": "gateway-client",
+                    "version": "2.0.0",
+                    "platform": "linux",
+                    "mode": "backend",
+                    "instanceId": self._instance_id,
+                },
+                "role": "operator",
+                "scopes": ["operator.admin"],
+                "auth": {"token": settings.OPENCLAW_GATEWAY_TOKEN},
+                "caps": [],
+            })
+
+            if connect_resp is None:
+                logger.error("No response to connect request")
+                return False
+
+            logger.info("Connected to OpenClaw Gateway (protocol %s)",
+                        connect_resp.get("protocol"))
+
+            # Load agent ID map (also direct send/recv)
+            agents_resp = await self._send_and_recv("agents.list", {})
+            if agents_resp:
+                agents = agents_resp.get("agents", [])
+                for a in agents:
+                    gw_id = a.get("id", "")
+                    name = a.get("name", "")
+                    clean_name = re.sub(r'^[^\w]+', '', name).strip()
+                    if clean_name and gw_id:
+                        self._agent_id_map[clean_name] = gw_id
+                        if clean_name == "Helix Director":
+                            self._agent_id_map["Helix"] = gw_id
+                logger.info("Loaded %d agent mappings", len(self._agent_id_map))
+
+            return True
+
+        except Exception as e:
+            logger.error("Failed to connect to OpenClaw Gateway: %s", e)
+            if self.ws:
+                await self.ws.close()
+                self.ws = None
+            return False
+
+    async def _request(self, method: str, params: dict, timeout: float = 30) -> dict | None:
+        """Send a request and wait for the response."""
+        req_id = str(uuid.uuid4())
+        msg = {"type": "req", "id": req_id, "method": method, "params": params}
+
+        future = asyncio.get_event_loop().create_future()
+        self._pending[req_id] = future
+
+        await self.ws.send(json.dumps(msg))
+
+        try:
+            result = await asyncio.wait_for(future, timeout=timeout)
+            return result
+        except asyncio.TimeoutError:
+            self._pending.pop(req_id, None)
+            logger.warning("Request %s timed out", method)
+            return None
+
+    async def start(self):
+        """Start the gateway client with auto-reconnect."""
+        self._running = True
+        await self._restore_active_chats()
+        await self._recover_stuck_tasks()
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+        logger.info("OpenClaw Gateway client started")
+
+    async def stop(self):
+        """Stop the gateway client."""
+        self._running = False
+        if self._receive_task and not self._receive_task.done():
+            self._receive_task.cancel()
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+        if self.ws:
+            await self.ws.close()
+            self.ws = None
+        for future in self._pending.values():
+            if not future.done():
+                future.cancel()
+        self._pending.clear()
+        if self._redis:
+            await self._redis.close()
+            self._redis = None
+        logger.info("OpenClaw Gateway client stopped")
+
+    async def _reconnect_loop(self):
+        """Maintain connection with exponential backoff."""
+        backoff = 1
+        while self._running:
+            if self.ws is None or self.ws.state.name != "OPEN":
+                success = await self.connect()
+                if success:
+                    backoff = 1
+                    self._receive_task = asyncio.create_task(self._receive_loop())
+                else:
+                    await asyncio.sleep(min(backoff, 60))
+                    backoff *= 2
+                    continue
+            await asyncio.sleep(5)
+
+    async def _receive_loop(self):
+        """Listen for messages from the gateway."""
+        try:
+            async for raw in self.ws:
+                try:
+                    data = json.loads(raw)
+                    await self._handle_message(data)
+                except json.JSONDecodeError:
+                    logger.warning("Non-JSON message from gateway")
+        except websockets.exceptions.ConnectionClosed:
+            logger.warning("Gateway connection closed, will reconnect...")
+            self.ws = None
+        except Exception as e:
+            logger.error("Error in receive loop: %s", e)
+            self.ws = None
+
+    async def _handle_message(self, data: dict):
+        """Route incoming messages."""
+        msg_type = data.get("type")
+
+        if msg_type == "res":
+            # Response to a request
+            req_id = data.get("id")
+            if req_id and req_id in self._pending:
+                future = self._pending.pop(req_id)
+                if not future.done():
+                    if data.get("ok"):
+                        future.set_result(data.get("payload", {}))
+                    else:
+                        error = data.get("error", {})
+                        future.set_exception(
+                            Exception(f"Gateway error: {error.get('code')}: {error.get('message')}")
+                        )
+
+        elif msg_type == "event":
+            event = data.get("event")
+            payload = data.get("payload", {})
+
+            if event == "chat":
+                await self._handle_chat_event(payload)
+
+    async def _handle_chat_event(self, payload: dict):
+        """Process chat stream events (delta/final/aborted)."""
+        session_key = payload.get("sessionKey", "")
+        state = payload.get("state")
+
+        if session_key not in self._active_chats:
+            return
+
+        chat = self._active_chats[session_key]
+
+        if state == "delta":
+            # Extract text from delta message
+            message = payload.get("message", {})
+            content = message.get("content", [])
+            text = self._extract_text(content)
+            if text and len(text) > len(chat.get("text", "")):
+                chat["text"] = text
+
+        elif state == "final":
+            message = payload.get("message", {})
+            content = message.get("content", [])
+            text = self._extract_text(content)
+            if text:
+                chat["text"] = text
+
+            task_id = chat["task_id"]
+            result_text = chat.get("text", "")
+            chat_type = chat.get("chat_type", "task")
+            agent_id = chat.get("agent_id")
+            self._active_chats.pop(session_key, None)
+            await self._remove_active_chat(session_key)
+
+            if chat_type == "mention" and agent_id:
+                await self._process_mention_result(task_id, agent_id, result_text)
+            else:
+                await self._process_task_result(task_id, result_text, "completed")
+
+        elif state in ("aborted", "error"):
+            task_id = chat["task_id"]
+            result_text = chat.get("text", "") or f"Task {state}"
+            chat_type = chat.get("chat_type", "task")
+            agent_id = chat.get("agent_id")
+            self._active_chats.pop(session_key, None)
+            await self._remove_active_chat(session_key)
+
+            if chat_type == "mention" and agent_id:
+                # For mentions, post whatever partial response we got (or skip if empty)
+                if result_text and result_text != f"Task {state}":
+                    await self._process_mention_result(task_id, agent_id, result_text)
+                else:
+                    logger.warning("Mention chat %s for task %d — no response to post", state, task_id)
+            else:
+                await self._process_task_result(task_id, result_text, "error")
+
+    @staticmethod
+    def _extract_text(content) -> str:
+        """Extract text from message content blocks."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+            return "\n".join(parts)
+        return ""
+
+    async def dispatch_task(self, task: Task, agent: Agent) -> None:
+        """Send a task to an agent via chat.send."""
+        if not self.ws or self.ws.state.name != "OPEN":
+            raise ConnectionError("Not connected to OpenClaw Gateway")
+
+        gw_agent_id = self._agent_id_map.get(agent.name)
+        if not gw_agent_id:
+            raise ValueError(f"Agent '{agent.name}' not found in gateway")
+
+        session_key = f"agent:{gw_agent_id}:main"
+        idem_key = str(uuid.uuid4())
+
+        # Format the task as a chat message
+        prompt = self._build_task_prompt(task)
+
+        # Track this chat
+        chat_data = {
+            "task_id": task.id,
+            "text": "",
+            "agent_name": agent.name,
+            "chat_type": "task",
+        }
+        self._active_chats[session_key] = chat_data
+        await self._save_active_chat(session_key, chat_data)
+
+        try:
+            result = await self._request("chat.send", {
+                "sessionKey": session_key,
+                "message": prompt,
+                "idempotencyKey": idem_key,
+                "deliver": False,
+            }, timeout=15)
+
+            if result is None:
+                self._active_chats.pop(session_key, None)
+                await self._remove_active_chat(session_key)
+                raise ConnectionError("chat.send request timed out")
+
+            logger.info("Dispatched task %d to agent %s (session %s)",
+                        task.id, agent.name, session_key)
+
+        except Exception as e:
+            self._active_chats.pop(session_key, None)
+            await self._remove_active_chat(session_key)
+            raise ConnectionError(f"Failed to dispatch: {e}")
+
+    @staticmethod
+    def _build_task_prompt(task: Task) -> str:
+        """Build a chat prompt from a task, injecting analytics data for relevant agents."""
+        parts = [f"## Task: {task.title}"]
+        if task.description:
+            parts.append(f"\n{task.description}")
+        parts.append(f"\nPriority: {task.priority}")
+        parts.append("\nPlease complete this task and provide your result.")
+
+        # Inject live analytics data for analytics-related agents
+        try:
+            from app.services.analytics import should_inject_analytics, fetch_analytics_context
+            agent = task.assigned_agent
+            if agent and should_inject_analytics(agent.name, task.board_id):
+                analytics_ctx = fetch_analytics_context(days=7)
+                if analytics_ctx:
+                    parts.append(analytics_ctx)
+                    logger.info("Injected analytics context into task %d prompt for agent %s",
+                                task.id, agent.name)
+        except Exception as e:
+            logger.warning("Failed to inject analytics context: %s", e)
+
+        return "\n".join(parts)
+
+    async def _process_task_result(self, task_id: int, result_text: str, status: str):
+        """Update task in database with the agent's result."""
+        async with async_session() as db:
+            stmt = (
+                select(Task)
+                .options(selectinload(Task.assigned_agent))
+                .where(Task.id == task_id)
+            )
+            task = (await db.execute(stmt)).scalar_one_or_none()
+            if not task:
+                logger.warning("Task %d not found for result update", task_id)
+                return
+
+            task.result = result_text
+            # Fix 3: Agent completion always goes to "review" — never directly to "done"
+            task.status = "review"
+            task.updated_at = datetime.now(timezone.utc)
+
+            if task.assigned_agent:
+                task.assigned_agent.status = "online"
+                # Publish agent status change event
+                try:
+                    from app.services.event_bus import publish_event as _publish
+                    await _publish({
+                        "type": "agent.status_changed",
+                        "org_id": str(task.assigned_agent.org_id or "default"),
+                        "data": {
+                            "agent_id": str(task.assigned_agent.id),
+                            "agent_name": task.assigned_agent.name,
+                            "status": "online",
+                        }
+                    })
+                except Exception:
+                    pass
+
+            db.add(ActivityLog(
+                actor_type="agent",
+                actor_id=task.assigned_agent_id,
+                action="task.submitted_for_review" if status != "error" else "task.failed",
+                entity_type="task",
+                entity_id=task.id,
+                details={
+                    "status": status,
+                    "result_preview": result_text[:200] if result_text else None,
+                },
+            ))
+
+            await db.commit()
+            logger.info("Task %d result saved, status -> %s", task_id, task.status)
+
+            # Send notifications
+            try:
+                from app.services.notifications import create_notification
+                agent_name = task.assigned_agent.name if task.assigned_agent else "Agent"
+
+                if status == "error":
+                    # Notify all admins about agent error
+                    admins = (await db.execute(select(User).where(User.role == "admin"))).scalars().all()
+                    for admin in admins:
+                        await create_notification(
+                            db, admin.id, "agent_error", "Agent error",
+                            f"{agent_name} encountered an error on '{task.title}'",
+                            target_type="task", target_id=task.id, org_id=task.assigned_agent.org_id if task.assigned_agent else None,
+                        )
+                    await db.commit()
+                else:
+                    # Task submitted for review → notify creator + admins
+                    recipients = set()
+                    if task.created_by_user_id:
+                        recipients.add(task.created_by_user_id)
+                    admins = (await db.execute(select(User).where(User.role == "admin"))).scalars().all()
+                    for admin in admins:
+                        recipients.add(admin.id)
+                    for uid in recipients:
+                        await create_notification(
+                            db, uid, "task_review", "Task ready for review",
+                            f"{agent_name} submitted '{task.title}' for review",
+                            target_type="task", target_id=task.id, org_id=task.assigned_agent.org_id if task.assigned_agent else None,
+                        )
+                    await db.commit()
+            except Exception as e:
+                logger.warning("Failed to send task result notifications: %s", e)
+
+    async def send_mention_chat(self, agent: Agent, task: Task, comment_content: str) -> None:
+        """Send a mention-triggered chat to an agent. The response is posted as a comment."""
+        if not self.ws or self.ws.state.name != "OPEN":
+            raise ConnectionError("Not connected to OpenClaw Gateway")
+
+        gw_agent_id = self._agent_id_map.get(agent.name)
+        if not gw_agent_id:
+            raise ValueError(f"Agent '{agent.name}' not found in gateway")
+
+        session_key = f"agent:{gw_agent_id}:main"
+
+        # Don't send if agent is already in an active chat on this session
+        if session_key in self._active_chats:
+            logger.warning("Agent %s already has active chat, skipping mention", agent.name)
+            return
+
+        prompt = (
+            f"You were @mentioned in a comment on a task.\n\n"
+            f"TASK: {task.title}\n"
+            f"DESCRIPTION: {task.description or 'N/A'}\n"
+            f"CURRENT STATUS: {task.status}\n"
+        )
+        if task.result:
+            prompt += f"CURRENT RESULT: {task.result[:500]}...\n"
+        prompt += (
+            f"\nCOMMENT:\n{comment_content}\n\n"
+            f"Respond to this comment helpfully. Your response will be posted as a comment on the task."
+        )
+
+        idem_key = str(uuid.uuid4())
+
+        # Track this chat as a mention (not a task dispatch)
+        chat_data = {
+            "task_id": task.id,
+            "agent_id": agent.id,
+            "text": "",
+            "agent_name": agent.name,
+            "chat_type": "mention",
+        }
+        self._active_chats[session_key] = chat_data
+        await self._save_active_chat(session_key, chat_data)
+
+        try:
+            result = await self._request("chat.send", {
+                "sessionKey": session_key,
+                "message": prompt,
+                "idempotencyKey": idem_key,
+                "deliver": False,
+            }, timeout=15)
+
+            if result is None:
+                self._active_chats.pop(session_key, None)
+                await self._remove_active_chat(session_key)
+                raise ConnectionError("chat.send request timed out")
+
+            logger.info("Mention chat sent to agent %s for task %d", agent.name, task.id)
+
+        except Exception as e:
+            self._active_chats.pop(session_key, None)
+            await self._remove_active_chat(session_key)
+            raise ConnectionError(f"Failed to send mention chat: {e}")
+
+    async def _process_mention_result(self, task_id: int, agent_id: int, result_text: str):
+        """Post the agent's mention response as a comment on the task."""
+        async with async_session() as db:
+            # Resolve agent name for display
+            agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+            agent_name = agent.name if agent else "Agent"
+
+            # Resolve task for metadata
+            task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+
+            comment = Comment(
+                task_id=task_id,
+                author_type="agent",
+                author_id=agent_id,
+                content=result_text,
+                mentions=None,
+            )
+            db.add(comment)
+
+            meta = {
+                "trigger": "mention",
+                "actor_name": agent_name,
+                "task_title": task.title if task else "",
+            }
+            if task:
+                meta["board_id"] = task.board_id
+
+            db.add(ActivityLog(
+                actor_type="agent",
+                actor_id=agent_id,
+                action="comment.added",
+                entity_type="task",
+                entity_id=task_id,
+                details=meta,
+            ))
+            await db.commit()
+
+            # Publish WebSocket event so frontend auto-refreshes comments
+            try:
+                from app.services.event_bus import publish_event
+                await publish_event({
+                    "type": "comment.added",
+                    "org_id": str(agent.org_id if agent else "default"),
+                    "data": {
+                        "actor_type": "agent",
+                        "actor_id": str(agent_id),
+                        "actor_name": agent_name,
+                        "target_type": "task",
+                        "target_id": str(task_id),
+                        "metadata": meta,
+                    }
+                })
+            except Exception as e:
+                logger.warning("Failed to publish comment event: %s", e)
+
+            logger.info("Agent %s mention response posted as comment on task %d", agent_name, task_id)
+
+    @property
+    def is_connected(self) -> bool:
+        return self.ws is not None and self.ws.state.name == "OPEN"
+
+
+# Singleton instance
+gateway = OpenClawGateway()
