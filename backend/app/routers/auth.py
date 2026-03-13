@@ -66,6 +66,17 @@ async def update_profile(
             if existing_agent:
                 raise HTTPException(status_code=400, detail="Name already taken by an agent")
             user.name = new_name
+    if "telegram_notifications" in updates:
+        user.telegram_notifications = updates["telegram_notifications"]
+    if "telegram_user_id" in updates:
+        tid = updates["telegram_user_id"]
+        if tid is not None and tid.strip():
+            tid = tid.strip()
+            if not tid.isdigit():
+                raise HTTPException(status_code=400, detail="Telegram User ID must be numeric")
+            user.telegram_user_id = tid
+        else:
+            user.telegram_user_id = None
     await db.commit()
     await db.refresh(user)
     return UserOut.model_validate(user)

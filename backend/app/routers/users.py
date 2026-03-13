@@ -24,6 +24,8 @@ class UserUpdate(BaseModel):
     email: str | None = None
     role: str | None = None
     password: str | None = None
+    telegram_notifications: bool | None = None
+    telegram_user_id: str | None = None
 
 
 @router.get("")
@@ -40,6 +42,8 @@ async def list_users(
             "email": u.email,
             "role": u.role,
             "created_at": u.created_at.isoformat() if u.created_at else None,
+            "telegram_notifications": u.telegram_notifications,
+            "telegram_user_id": u.telegram_user_id,
         }
         for u in users
     ]
@@ -113,9 +117,20 @@ async def update_user(
         user.role = body.role
     if body.password is not None:
         user.password_hash = hash_password(body.password)
+    if body.telegram_notifications is not None:
+        user.telegram_notifications = body.telegram_notifications
+    if body.telegram_user_id is not None:
+        tid = body.telegram_user_id.strip()
+        if tid and not tid.isdigit():
+            raise HTTPException(400, "Telegram User ID must be numeric")
+        user.telegram_user_id = tid if tid else None
 
     await db.commit()
-    return {"id": user.id, "name": user.name, "email": user.email, "role": user.role}
+    return {
+        "id": user.id, "name": user.name, "email": user.email, "role": user.role,
+        "telegram_notifications": user.telegram_notifications,
+        "telegram_user_id": user.telegram_user_id,
+    }
 
 
 @router.delete("/{user_id}", status_code=204)

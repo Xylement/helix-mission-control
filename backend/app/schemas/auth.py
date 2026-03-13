@@ -27,6 +27,8 @@ class UserOut(BaseModel):
 
 class ProfileUpdate(BaseModel):
     name: str | None = None
+    telegram_notifications: bool | None = None
+    telegram_user_id: str | None = None
 
 
 class PasswordChange(BaseModel):
