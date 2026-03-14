@@ -28,6 +28,22 @@ logger = logging.getLogger("helix.tasks")
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
+def _get_org_id(user):
+    return getattr(user, "org_id", None)
+
+
+async def _verify_task_in_org(db: AsyncSession, task_id: int, org_id: int) -> Task | None:
+    """Fetch a task only if it belongs to the user's org (via board->department)."""
+    result = await db.execute(
+        select(Task)
+        .join(Board, Task.board_id == Board.id)
+        .join(Department, Board.department_id == Department.id)
+        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
+        .where(Task.id == task_id, Department.org_id == org_id)
+    )
+    return result.scalar_one_or_none()
+
+
 async def _check_board_permission(db: AsyncSession, user, board_id: int, required_level: str):
     """Check if user has required permission level on a board. Admin bypasses all."""
     is_admin = getattr(user, "role", None) == "admin" or getattr(user, "is_service_token", False)
@@ -38,7 +54,7 @@ async def _check_board_permission(db: AsyncSession, user, board_id: int, require
         select(exists().where(BoardPermission.board_id == board_id))
     )).scalar()
     if not has_perms:
-        return  # No permissions set = open to all
+        return
     user_perm = (await db.execute(
         select(BoardPermission).where(
             BoardPermission.board_id == board_id,
@@ -52,19 +68,32 @@ async def _check_board_permission(db: AsyncSession, user, board_id: int, require
         raise HTTPException(status_code=403, detail=f"Requires '{required_level}' permission on this board")
 
 
+async def _verify_board_in_org(db: AsyncSession, board_id: int, org_id: int) -> Board | None:
+    """Verify a board belongs to the user's org."""
+    result = await db.execute(
+        select(Board)
+        .join(Department)
+        .where(Board.id == board_id, Department.org_id == org_id)
+    )
+    return result.scalar_one_or_none()
+
+
 @router.get("/search", response_model=list[TaskOut])
 async def search_tasks(
     q: str = Query("", min_length=1, max_length=200),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    """Search tasks across all boards by title, description, or agent name."""
+    org_id = _get_org_id(user)
     search_term = f"%{q}%"
     stmt = (
         select(Task)
+        .join(Board, Task.board_id == Board.id)
+        .join(Department, Board.department_id == Department.id)
         .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
         .outerjoin(Agent, Task.assigned_agent_id == Agent.id)
         .where(
+            Department.org_id == org_id,
             (Task.title.ilike(search_term))
             | (Task.description.ilike(search_term))
             | (Agent.name.ilike(search_term))
@@ -83,11 +112,15 @@ async def list_tasks(
     assigned_agent_id: int | None = Query(None),
     archived: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
+    org_id = _get_org_id(user)
     q = (
         select(Task)
+        .join(Board, Task.board_id == Board.id)
+        .join(Department, Board.department_id == Department.id)
         .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
+        .where(Department.org_id == org_id)
         .order_by(Task.created_at.desc())
     )
     if board_id:
@@ -96,7 +129,6 @@ async def list_tasks(
         q = q.where(Task.status == status)
     if assigned_agent_id:
         q = q.where(Task.assigned_agent_id == assigned_agent_id)
-    # Default: hide archived tasks unless explicitly requested
     if archived is None:
         q = q.where(Task.archived == False)
     elif archived is not None:
@@ -111,47 +143,53 @@ async def create_task(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    org_id = _get_org_id(user)
+    # Verify board belongs to user's org
+    board = await _verify_board_in_org(db, body.board_id, org_id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
     await _check_board_permission(db, user, body.board_id, "create")
     task = Task(**body.model_dump(), created_by_user_id=user.id)
     db.add(task)
     await db.flush()
 
-    # Build rich metadata
     meta = {"task_title": body.title}
-    board = (await db.execute(select(Board).where(Board.id == body.board_id))).scalar_one_or_none()
-    if board:
-        meta["board_name"] = board.name
-        meta["board_id"] = board.id
-        dept = (await db.execute(select(Department).where(Department.id == board.department_id))).scalar_one_or_none()
-        if dept:
-            meta["department_id"] = dept.id
-            meta["department_name"] = dept.name
+    meta["board_name"] = board.name
+    meta["board_id"] = board.id
+    dept = (await db.execute(select(Department).where(Department.id == board.department_id))).scalar_one_or_none()
+    if dept:
+        meta["department_id"] = dept.id
+        meta["department_name"] = dept.name
     if body.assigned_agent_id:
-        agent = (await db.execute(select(Agent).where(Agent.id == body.assigned_agent_id))).scalar_one_or_none()
+        agent = (await db.execute(
+            select(Agent).where(Agent.id == body.assigned_agent_id, Agent.org_id == org_id)
+        )).scalar_one_or_none()
         if agent:
             meta["agent_name"] = agent.name
 
     meta["actor_name"] = user.name
-    await log_activity(db, "user", user.id, "task.created", "task", task.id, meta)
+    await log_activity(db, "user", user.id, "task.created", "task", task.id, meta, org_id=org_id)
 
-    # Notify on task assignment
     if body.assigned_agent_id:
-        agent = (await db.execute(select(Agent).where(Agent.id == body.assigned_agent_id))).scalar_one_or_none()
+        agent = (await db.execute(
+            select(Agent).where(Agent.id == body.assigned_agent_id, Agent.org_id == org_id)
+        )).scalar_one_or_none()
         agent_name = agent.name if agent else "an agent"
-        # Notify admins about agent assignment (skip if creator is admin)
-        admin_result = await db.execute(select(User).where(User.role == "admin"))
+        admin_result = await db.execute(
+            select(User).where(User.role == "admin", User.org_id == org_id)
+        )
         for admin in admin_result.scalars().all():
             if admin.id != user.id:
                 await create_notification(
                     db, admin.id, "task_assigned", "Task assigned",
                     f"'{body.title}' was assigned to {agent_name}",
-                    target_type="task", target_id=task.id, org_id=user.org_id,
+                    target_type="task", target_id=task.id, org_id=org_id,
                 )
 
     await db.commit()
     await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
 
-    # Auto-dispatch if agent has execution_mode="auto"
     await _maybe_auto_dispatch(task, db, user)
     await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
 
@@ -162,14 +200,10 @@ async def create_task(
 async def get_task(
     task_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Task)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
-        .where(Task.id == task_id)
-    )
-    task = result.scalar_one_or_none()
+    org_id = _get_org_id(user)
+    task = await _verify_task_in_org(db, task_id, org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return TaskOut.model_validate(task)
@@ -182,17 +216,12 @@ async def update_task(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Task)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
-        .where(Task.id == task_id)
-    )
-    task = result.scalar_one_or_none()
+    org_id = _get_org_id(user)
+    task = await _verify_task_in_org(db, task_id, org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     await _check_board_permission(db, user, task.board_id, "create")
-    # Fix 4: Block edits on completed tasks (except by admin/service)
     if task.status == "done":
         if user.role != "admin":
             raise HTTPException(
@@ -202,7 +231,6 @@ async def update_task(
 
     updates = body.model_dump(exclude_unset=True)
 
-    # Fix 3: Validate status transitions
     if "status" in updates and updates["status"] != task.status:
         actor_type = ActorType.USER
         is_valid, error = validate_transition(
@@ -219,7 +247,6 @@ async def update_task(
     for k, v in updates.items():
         setattr(task, k, v)
 
-    # Build rich metadata
     board = (await db.execute(select(Board).where(Board.id == task.board_id))).scalar_one_or_none()
     meta: dict = {"task_title": task.title}
     if board:
@@ -231,7 +258,6 @@ async def update_task(
             meta["department_name"] = dept.name
     meta.update(updates)
 
-    # Determine action type
     action = "task.updated"
     if "status" in updates:
         if updates["status"] == "done":
@@ -241,32 +267,32 @@ async def update_task(
             meta["new_status"] = updates["status"]
 
     if "assigned_agent_id" in updates and updates["assigned_agent_id"] != old_agent_id:
-        agent = (await db.execute(select(Agent).where(Agent.id == updates["assigned_agent_id"]))).scalar_one_or_none()
+        agent = (await db.execute(
+            select(Agent).where(Agent.id == updates["assigned_agent_id"], Agent.org_id == org_id)
+        )).scalar_one_or_none()
         if agent:
             meta["agent_name"] = agent.name
-        # Log assignment as separate activity
-        await log_activity(db, "user", user.id, "task.assigned", "task", task.id, meta)
+        await log_activity(db, "user", user.id, "task.assigned", "task", task.id, meta, org_id=org_id)
 
     meta["actor_name"] = user.name
-    await log_activity(db, "user", user.id, action, "task", task.id, meta)
+    await log_activity(db, "user", user.id, action, "task", task.id, meta, org_id=org_id)
 
-    # Notifications based on status changes
     if "status" in updates:
         new_status = updates["status"]
-        # Task completed → notify creator
         if new_status == "done" and task.created_by_user_id != user.id:
             await create_notification(
                 db, task.created_by_user_id, "task_completed", "Task completed",
                 f"'{task.title}' has been marked as done",
-                target_type="task", target_id=task.id, org_id=user.org_id,
+                target_type="task", target_id=task.id, org_id=org_id,
             )
-        # Task moved to review → notify creator + admins
         if new_status == "review":
             agent_name = meta.get("agent_name", "Someone")
             recipients = set()
             if task.created_by_user_id != user.id:
                 recipients.add(task.created_by_user_id)
-            admin_result = await db.execute(select(User).where(User.role == "admin"))
+            admin_result = await db.execute(
+                select(User).where(User.role == "admin", User.org_id == org_id)
+            )
             for admin in admin_result.scalars().all():
                 if admin.id != user.id:
                     recipients.add(admin.id)
@@ -274,13 +300,12 @@ async def update_task(
                 await create_notification(
                     db, uid, "task_review", "Task ready for review",
                     f"{agent_name} submitted '{task.title}' for review",
-                    target_type="task", target_id=task.id, org_id=user.org_id,
+                    target_type="task", target_id=task.id, org_id=org_id,
                 )
 
     await db.commit()
     await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
 
-    # Auto-dispatch if agent assignment changed and agent is auto-mode
     if "assigned_agent_id" in updates and updates["assigned_agent_id"]:
         await _maybe_auto_dispatch(task, db, user)
         await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
@@ -294,13 +319,12 @@ async def delete_task(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Task).where(Task.id == task_id))
-    task = result.scalar_one_or_none()
+    org_id = _get_org_id(user)
+    task = await _verify_task_in_org(db, task_id, org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     await _check_board_permission(db, user, task.board_id, "manage")
-    # Fix 4: Permission check — only creator, admin can delete
     is_creator = task.created_by_user_id == user.id
     is_admin = user.role == "admin"
     if not (is_creator or is_admin):
@@ -309,7 +333,6 @@ async def delete_task(
             detail="Only the task creator or admin can delete tasks"
         )
 
-    # Delete related comments first (ORM doesn't trigger DB CASCADE)
     await db.execute(select(Comment).where(Comment.task_id == task_id).execution_options(synchronize_session="fetch"))
     from sqlalchemy import delete as sql_delete
     await db.execute(sql_delete(Comment).where(Comment.task_id == task_id))
@@ -323,7 +346,7 @@ async def delete_task(
         if dept:
             meta["department_id"] = dept.id
             meta["department_name"] = dept.name
-    await log_activity(db, "user", user.id, "task.deleted", "task", task.id, meta)
+    await log_activity(db, "user", user.id, "task.deleted", "task", task.id, meta, org_id=org_id)
     await db.delete(task)
     await db.commit()
 
@@ -334,13 +357,8 @@ async def execute_task(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Manually trigger agent execution for a task."""
-    result = await db.execute(
-        select(Task)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
-        .where(Task.id == task_id)
-    )
-    task = result.scalar_one_or_none()
+    org_id = _get_org_id(user)
+    task = await _verify_task_in_org(db, task_id, org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -355,7 +373,9 @@ async def execute_task(
 
     agent = task.assigned_agent
     if not agent:
-        result = await db.execute(select(Agent).where(Agent.id == task.assigned_agent_id))
+        result = await db.execute(
+            select(Agent).where(Agent.id == task.assigned_agent_id, Agent.org_id == org_id)
+        )
         agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Assigned agent not found")
@@ -363,7 +383,6 @@ async def execute_task(
     if not gateway.is_connected:
         raise HTTPException(status_code=503, detail="OpenClaw Gateway is not connected")
 
-    # Update status to in_progress
     task.status = "in_progress"
     agent.status = "busy"
     task.updated_at = datetime.now(timezone.utc)
@@ -377,15 +396,13 @@ async def execute_task(
         if dept:
             meta["department_id"] = dept.id
             meta["department_name"] = dept.name
-    await log_activity(db, "user", user.id, "task.executed", "task", task.id, meta)
+    await log_activity(db, "user", user.id, "task.executed", "task", task.id, meta, org_id=org_id)
     await db.commit()
 
-    # Dispatch to gateway
     try:
         await gateway.dispatch_task(task, agent)
         logger.info("Manual execute: task %d dispatched to agent %s", task.id, agent.name)
     except ConnectionError as e:
-        # Revert status on dispatch failure
         task.status = "todo"
         agent.status = "online"
         await db.commit()
@@ -412,7 +429,7 @@ async def _maybe_auto_dispatch(task: Task, db: AsyncSession, user: User):
         logger.warning("Gateway not connected, skipping auto-dispatch for task %d", task.id)
         return
 
-    # Update statuses
+    org_id = _get_org_id(user)
     task.status = "in_progress"
     agent.status = "busy"
     meta: dict = {"task_title": task.title, "agent_name": agent.name, "trigger": "auto", "actor_name": "Helix"}
@@ -424,7 +441,7 @@ async def _maybe_auto_dispatch(task: Task, db: AsyncSession, user: User):
         if dept:
             meta["department_id"] = dept.id
             meta["department_name"] = dept.name
-    await log_activity(db, "system", None, "task.dispatched", "task", task.id, meta)
+    await log_activity(db, "system", None, "task.dispatched", "task", task.id, meta, org_id=org_id)
     await db.commit()
     await db.refresh(task)
 

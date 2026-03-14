@@ -27,34 +27,48 @@ DEPT_EMOJI = {
 @router.get("/stats")
 async def dashboard_stats(
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    # Agent counts
-    total_agents = (await db.execute(select(func.count(Agent.id)))).scalar() or 0
+    org_id = user.org_id
+
+    total_agents = (await db.execute(
+        select(func.count(Agent.id)).where(Agent.org_id == org_id)
+    )).scalar() or 0
     online_agents = (await db.execute(
-        select(func.count(Agent.id)).where(Agent.status == "online")
+        select(func.count(Agent.id)).where(Agent.org_id == org_id, Agent.status == "online")
     )).scalar() or 0
 
-    # Task counts
+    # Get org board IDs for task scoping
+    org_board_ids_q = (
+        select(Board.id)
+        .join(Department)
+        .where(Department.org_id == org_id)
+    )
+
     in_progress = (await db.execute(
-        select(func.count(Task.id)).where(Task.status == "in_progress")
+        select(func.count(Task.id)).where(
+            Task.board_id.in_(org_board_ids_q),
+            Task.status == "in_progress",
+        )
     )).scalar() or 0
     awaiting_review = (await db.execute(
-        select(func.count(Task.id)).where(Task.status == "review")
+        select(func.count(Task.id)).where(
+            Task.board_id.in_(org_board_ids_q),
+            Task.status == "review",
+        )
     )).scalar() or 0
 
-    # Completed today (using updated_at since there's no completed_at field)
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     completed_today = (await db.execute(
         select(func.count(Task.id)).where(
+            Task.board_id.in_(org_board_ids_q),
             Task.status == "done",
             Task.updated_at >= today_start,
         )
     )).scalar() or 0
 
-    # Department breakdowns
     departments_result = await db.execute(
-        select(Department).order_by(Department.name)
+        select(Department).where(Department.org_id == org_id).order_by(Department.name)
     )
     departments = departments_result.scalars().all()
 
@@ -64,7 +78,6 @@ async def dashboard_stats(
             select(func.count(Agent.id)).where(Agent.department_id == dept.id)
         )).scalar() or 0
 
-        # Task counts by status via boards
         board_ids_result = await db.execute(
             select(Board.id).where(Board.department_id == dept.id)
         )
@@ -104,10 +117,12 @@ async def dashboard_stats(
 async def dashboard_activity(
     limit: int = Query(20, le=50),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
+    org_id = user.org_id
     result = await db.execute(
         select(ActivityLog)
+        .where(ActivityLog.org_id == org_id)
         .order_by(ActivityLog.created_at.desc())
         .limit(limit)
     )
@@ -115,22 +130,19 @@ async def dashboard_activity(
 
     out = []
     for a in activities:
-        # Resolve actor name
         actor_name = None
         if a.actor_type == "user" and a.actor_id:
-            user = (await db.execute(select(User).where(User.id == a.actor_id))).scalar_one_or_none()
-            actor_name = user.name if user else None
+            u = (await db.execute(select(User).where(User.id == a.actor_id))).scalar_one_or_none()
+            actor_name = u.name if u else None
         elif a.actor_type == "agent" and a.actor_id:
-            agent = (await db.execute(select(Agent).where(Agent.id == a.actor_id))).scalar_one_or_none()
-            actor_name = agent.name if agent else None
+            ag = (await db.execute(select(Agent).where(Agent.id == a.actor_id))).scalar_one_or_none()
+            actor_name = ag.name if ag else None
         elif a.actor_type == "system":
             actor_name = (a.details or {}).get("actor_name", "Helix")
 
-        # Enrich metadata from details
         details = a.details or {}
         metadata = dict(details)
 
-        # If we have an entity_id for a task, try to resolve board info
         if a.entity_type == "task" and a.entity_id and "board_name" not in metadata:
             task = (await db.execute(
                 select(Task).where(Task.id == a.entity_id)

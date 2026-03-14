@@ -14,6 +14,7 @@ class ServiceToken(Base):
     org_id: Mapped[int] = mapped_column(Integer, ForeignKey("organizations.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_prefix: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     permissions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

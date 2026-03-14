@@ -33,7 +33,10 @@ async def list_users(
     current_user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.role != "system").order_by(User.name))
+    org_id = current_user.org_id
+    result = await db.execute(
+        select(User).where(User.role != "system", User.org_id == org_id).order_by(User.name)
+    )
     users = result.scalars().all()
     return [
         {
@@ -55,18 +58,23 @@ async def create_user(
     current_user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    # Validate unique name across users AND agents
-    existing_user = await db.execute(select(User).where(User.name.ilike(body.name)))
+    org_id = current_user.org_id
+    # Validate unique name within org
+    existing_user = await db.execute(
+        select(User).where(User.org_id == org_id, User.name.ilike(body.name))
+    )
     if existing_user.scalar_one_or_none():
         raise HTTPException(400, "A user with this name already exists")
 
-    existing_agent = await db.execute(select(Agent).where(Agent.name.ilike(body.name)))
+    existing_agent = await db.execute(
+        select(Agent).where(Agent.org_id == org_id, Agent.name.ilike(body.name))
+    )
     if existing_agent.scalar_one_or_none():
         raise HTTPException(
             400, "An agent with this name already exists (names must be unique across users and agents)"
         )
 
-    # Validate unique email
+    # Email stays globally unique
     existing_email = await db.execute(select(User).where(User.email.ilike(body.email)))
     if existing_email.scalar_one_or_none():
         raise HTTPException(400, "This email is already registered")
@@ -76,6 +84,7 @@ async def create_user(
         email=body.email,
         password_hash=hash_password(body.password),
         role=body.role,
+        org_id=org_id,
     )
     db.add(user)
     await db.commit()
@@ -91,17 +100,23 @@ async def update_user(
     current_user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await db.get(User, user_id)
+    org_id = current_user.org_id
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.org_id == org_id)
+    )
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "User not found")
 
     if body.name is not None:
         existing = await db.execute(
-            select(User).where(User.name.ilike(body.name), User.id != user.id)
+            select(User).where(User.org_id == org_id, User.name.ilike(body.name), User.id != user.id)
         )
         if existing.scalar_one_or_none():
             raise HTTPException(400, "Name already taken by another user")
-        existing_agent = await db.execute(select(Agent).where(Agent.name.ilike(body.name)))
+        existing_agent = await db.execute(
+            select(Agent).where(Agent.org_id == org_id, Agent.name.ilike(body.name))
+        )
         if existing_agent.scalar_one_or_none():
             raise HTTPException(400, "Name already taken by an agent")
         user.name = body.name
@@ -139,7 +154,11 @@ async def delete_user(
     current_user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await db.get(User, user_id)
+    org_id = current_user.org_id
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.org_id == org_id)
+    )
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "User not found")
     if user.id == current_user.id:

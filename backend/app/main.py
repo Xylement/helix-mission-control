@@ -17,6 +17,7 @@ from app.routers import attachments as attachments_router
 from app.routers import skills as skills_router
 from app.routers import ai_models as ai_models_router
 from app.routers import board_permissions as board_permissions_router
+from app.routers import settings as settings_router
 from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
@@ -94,6 +95,7 @@ app.include_router(attachments_router.router, prefix="/api")
 app.include_router(skills_router.router, prefix="/api")
 app.include_router(ai_models_router.router, prefix="/api")
 app.include_router(board_permissions_router.router, prefix="/api")
+app.include_router(settings_router.router, prefix="/api")
 app.include_router(websocket_router.router)
 
 

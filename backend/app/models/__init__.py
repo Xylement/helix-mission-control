@@ -14,6 +14,7 @@ from app.models.attachment import TaskAttachment
 from app.models.skill import Skill, AgentSkill
 from app.models.ai_model import AIModel
 from app.models.board_permission import BoardPermission
+from app.models.token_usage import TokenUsage
 
 __all__ = [
     "Organization",
@@ -33,4 +34,5 @@ __all__ = [
     "AgentSkill",
     "AIModel",
     "BoardPermission",
+    "TokenUsage",
 ]

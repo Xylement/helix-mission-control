@@ -56,7 +56,6 @@ async def sync_soul_md(agent_name: str, system_prompt: str):
     workspace_dir = os.path.join(OPENCLAW_WORKSPACE_BASE, agent_name.lower())
     soul_path = os.path.join(workspace_dir, "SOUL.md")
 
-    # Read existing SOUL.md to preserve learning loop section
     learning_loop = ""
     if os.path.exists(soul_path):
         with open(soul_path, 'r') as f:
@@ -65,7 +64,6 @@ async def sync_soul_md(agent_name: str, system_prompt: str):
             if loop_marker in content:
                 learning_loop = content[content.index(loop_marker):]
 
-    # Write updated SOUL.md
     os.makedirs(workspace_dir, exist_ok=True)
     with open(soul_path, 'w') as f:
         f.write(f"# Agent Identity\n\n{system_prompt}\n\n---\n\n")
@@ -82,9 +80,10 @@ async def list_agents(
     department_id: int | None = Query(None),
     board_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    q = select(Agent).order_by(Agent.id)
+    org_id = getattr(user, "org_id", None)
+    q = select(Agent).where(Agent.org_id == org_id).order_by(Agent.id)
     if department_id:
         q = q.where(Agent.department_id == department_id)
     if board_id:
@@ -99,12 +98,17 @@ async def create_agent(
     db: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
-    # Validate unique name across agents AND users
-    existing_agent = await db.execute(select(Agent).where(Agent.name.ilike(body.name)))
+    org_id = user.org_id
+    # Validate unique name within org (across agents AND users)
+    existing_agent = await db.execute(
+        select(Agent).where(Agent.org_id == org_id, Agent.name.ilike(body.name))
+    )
     if existing_agent.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="An agent with this name already exists")
 
-    existing_user = await db.execute(select(User).where(User.name.ilike(body.name)))
+    existing_user = await db.execute(
+        select(User).where(User.org_id == org_id, User.name.ilike(body.name))
+    )
     if existing_user.scalar_one_or_none():
         raise HTTPException(
             status_code=400, detail="A user with this name already exists (names must be unique)"
@@ -118,15 +122,16 @@ async def create_agent(
         system_prompt=body.system_prompt,
         execution_mode=body.execution_mode,
         status="offline",
+        org_id=org_id,
     )
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
 
-    # Sync SOUL.md
     asyncio.create_task(sync_soul_md(agent.name, body.system_prompt))
 
     db.add(ActivityLog(
+        org_id=org_id,
         actor_type="user", actor_id=user.id, action="agent.created",
         entity_type="agent", entity_id=agent.id, details={"name": agent.name},
     ))
@@ -139,9 +144,12 @@ async def create_agent(
 async def get_agent(
     agent_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    org_id = getattr(user, "org_id", None)
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -154,13 +162,17 @@ async def delete_agent(
     db: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    org_id = user.org_id
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     agent_name = agent.name
     await db.delete(agent)
     db.add(ActivityLog(
+        org_id=org_id,
         actor_type="user", actor_id=user.id, action="agent.deleted",
         entity_type="agent", entity_id=agent_id, details={"name": agent_name},
     ))
@@ -174,17 +186,20 @@ async def update_agent(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    org_id = getattr(user, "org_id", None)
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     updates = body.model_dump(exclude_unset=True)
     for k, v in updates.items():
         setattr(agent, k, v)
-    # Sync system prompt to SOUL.md on disk
     if "system_prompt" in updates and updates["system_prompt"] is not None:
         asyncio.create_task(sync_soul_md(agent.name, updates["system_prompt"]))
     db.add(ActivityLog(
+        org_id=org_id,
         actor_type="user", actor_id=user.id, action="agent.updated",
         entity_type="agent", entity_id=agent.id, details=updates,
     ))
@@ -197,22 +212,22 @@ async def update_agent(
 async def get_agent_stats(
     agent_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    """Get performance stats for an agent."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    org_id = getattr(user, "org_id", None)
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Total completed
     total_completed = (await db.execute(
         select(func.count(Task.id)).where(
             Task.assigned_agent_id == agent_id, Task.status == "done"
         )
     )).scalar() or 0
 
-    # This week (Monday start)
     now = datetime.now(timezone.utc)
     monday = now - timedelta(days=now.weekday())
     week_start = monday.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -224,7 +239,6 @@ async def get_agent_stats(
         )
     )).scalar() or 0
 
-    # This month
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     this_month = (await db.execute(
         select(func.count(Task.id)).where(
@@ -234,7 +248,6 @@ async def get_agent_stats(
         )
     )).scalar() or 0
 
-    # Average completion time (updated_at - created_at for done tasks)
     done_tasks_result = await db.execute(
         select(Task.created_at, Task.updated_at).where(
             Task.assigned_agent_id == agent_id,
@@ -252,7 +265,6 @@ async def get_agent_stats(
         if durations:
             avg_minutes = round(sum(durations) / len(durations), 1)
 
-    # Tasks by status
     status_counts = {}
     for s in ("todo", "in_progress", "review", "done"):
         count = (await db.execute(
@@ -264,8 +276,6 @@ async def get_agent_stats(
 
     total_tasks = sum(status_counts.values())
 
-    # Success rate = completed / (completed + rejected)
-    # Count tasks that were ever rejected (check activity logs)
     rejected_count = (await db.execute(
         select(func.count(func.distinct(ActivityLog.entity_id))).where(
             ActivityLog.entity_type == "task",
@@ -299,15 +309,16 @@ async def get_agent_stats(
 async def get_agent_status_log(
     agent_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    """Get status change history for an agent."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    org_id = getattr(user, "org_id", None)
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Pull from ActivityLog
     log_result = await db.execute(
         select(ActivityLog)
         .where(
@@ -327,11 +338,9 @@ async def get_agent_status_log(
     for log in logs:
         details = log.details or {}
         status = details.get("status") or details.get("new_status")
-        # For agent.updated entries, check if status was in the update
         if not status and "status" in details:
             status = details["status"]
         if not status:
-            # Derive from action name
             if log.action == "agent.online":
                 status = "online"
             elif log.action == "agent.offline":
@@ -353,10 +362,12 @@ async def get_agent_tasks(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    """Get tasks assigned to an agent with pagination."""
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    org_id = getattr(user, "org_id", None)
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -370,19 +381,16 @@ async def get_agent_tasks(
     if status:
         q = q.where(Task.status == status)
 
-    # Count total
     count_q = select(func.count(Task.id)).where(Task.assigned_agent_id == agent_id)
     if status:
         count_q = count_q.where(Task.status == status)
     total = (await db.execute(count_q)).scalar() or 0
 
-    # Paginate
     offset = (page - 1) * per_page
     q = q.offset(offset).limit(per_page)
     tasks_result = await db.execute(q)
     tasks = tasks_result.scalars().all()
 
-    # Get board names for each task
     board_ids = list(set(t.board_id for t in tasks))
     board_map = {}
     if board_ids:

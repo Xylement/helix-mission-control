@@ -44,7 +44,10 @@ async def list_gateways(
     current_user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Gateway).order_by(Gateway.created_at))
+    org_id = current_user.org_id
+    result = await db.execute(
+        select(Gateway).where(Gateway.org_id == org_id).order_by(Gateway.created_at)
+    )
     gateways = result.scalars().all()
 
     items = []
@@ -71,6 +74,7 @@ async def add_gateway(
         name=body.name,
         websocket_url=body.websocket_url,
         token=body.token,
+        org_id=current_user.org_id,
     )
     db.add(gw)
     await db.commit()
@@ -91,7 +95,10 @@ async def update_gateway(
     current_user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    gw = await db.get(Gateway, gateway_id)
+    result = await db.execute(
+        select(Gateway).where(Gateway.id == gateway_id, Gateway.org_id == current_user.org_id)
+    )
+    gw = result.scalar_one_or_none()
     if not gw:
         raise HTTPException(404, "Gateway not found")
 
@@ -117,7 +124,10 @@ async def remove_gateway(
     current_user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    gw = await db.get(Gateway, gateway_id)
+    result = await db.execute(
+        select(Gateway).where(Gateway.id == gateway_id, Gateway.org_id == current_user.org_id)
+    )
+    gw = result.scalar_one_or_none()
     if not gw:
         raise HTTPException(404, "Gateway not found")
 

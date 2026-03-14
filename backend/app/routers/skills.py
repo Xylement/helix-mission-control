@@ -35,7 +35,10 @@ async def list_skills(
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    result = await db.execute(select(Skill).order_by(Skill.name))
+    org_id = getattr(_user, "org_id", None)
+    result = await db.execute(
+        select(Skill).where(Skill.org_id == org_id).order_by(Skill.name)
+    )
     skills = result.scalars().all()
     out = []
     for s in skills:
@@ -60,6 +63,7 @@ async def create_skill(
         version=body.version,
         config=body.config,
         created_by_user_id=user.id,
+        org_id=user.org_id,
     )
     db.add(skill)
     await db.commit()

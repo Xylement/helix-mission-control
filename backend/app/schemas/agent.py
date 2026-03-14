@@ -12,6 +12,8 @@ class AgentOut(BaseModel):
     status: str
     execution_mode: str
     ai_model_id: int | None = None
+    model_provider: str | None = None
+    model_name: str | None = None
     created_at: datetime
 
     class Config:
@@ -32,3 +34,5 @@ class AgentUpdate(BaseModel):
     execution_mode: str | None = None
     system_prompt: str | None = None
     ai_model_id: int | None = None
+    model_provider: str | None = None
+    model_name: str | None = None

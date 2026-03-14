@@ -167,42 +167,58 @@ class OpenClawGateway:
                 logger.warning("Unexpected first message: %s", data.get("event"))
 
             # Send connect request (direct send/recv, no receive loop yet)
-            connect_resp = await self._send_and_recv("connect", {
+            # Build connect params with device auth for operator scopes
+            connect_params = {
                 "minProtocol": 3,
                 "maxProtocol": 3,
                 "client": {
-                    "id": "gateway-client",
-                    "version": "2.0.0",
+                    "id": "cli",
+                    "version": "2026.3.11",
                     "platform": "linux",
-                    "mode": "backend",
+                    "mode": "cli",
                     "instanceId": self._instance_id,
                 },
-                "role": "operator",
-                "scopes": ["operator.admin"],
-                "auth": {"token": settings.OPENCLAW_GATEWAY_TOKEN},
                 "caps": [],
-            })
+                "auth": {"token": settings.OPENCLAW_GATEWAY_TOKEN},
+                "role": "operator",
+                "scopes": [
+                    "operator.admin", "operator.read", "operator.write",
+                    "operator.approvals", "operator.pairing",
+                ],
+            }
+            # Add device token for operator scope grant
+            device_auth = self._load_device_auth()
+            if device_auth:
+                connect_params["auth"]["deviceToken"] = device_auth["token"]
+
+            connect_resp = await self._send_and_recv("connect", connect_params)
 
             if connect_resp is None:
                 logger.error("No response to connect request")
                 return False
 
-            logger.info("Connected to OpenClaw Gateway (protocol %s)",
-                        connect_resp.get("protocol"))
+            logger.info("Connected to OpenClaw Gateway (protocol %s, connId=%s)",
+                        connect_resp.get("protocol"),
+                        connect_resp.get("server", {}).get("connId", "?"))
 
             # Load agent ID map (also direct send/recv)
-            agents_resp = await self._send_and_recv("agents.list", {})
-            if agents_resp:
-                agents = agents_resp.get("agents", [])
-                for a in agents:
-                    gw_id = a.get("id", "")
-                    name = a.get("name", "")
-                    clean_name = re.sub(r'^[^\w]+', '', name).strip()
-                    if clean_name and gw_id:
-                        self._agent_id_map[clean_name] = gw_id
-                        if clean_name == "Helix Director":
-                            self._agent_id_map["Helix"] = gw_id
-                logger.info("Loaded %d agent mappings", len(self._agent_id_map))
+            try:
+                agents_resp = await self._send_and_recv("agents.list", {})
+                if agents_resp:
+                    agents = agents_resp.get("agents", [])
+                    for a in agents:
+                        gw_id = a.get("id", "")
+                        name = a.get("name", "")
+                        clean_name = re.sub(r'^[^\w]+', '', name).strip()
+                        if clean_name and gw_id:
+                            self._agent_id_map[clean_name] = gw_id
+                            if clean_name == "Helix Director":
+                                self._agent_id_map["Helix"] = gw_id
+                    logger.info("Loaded %d agent mappings", len(self._agent_id_map))
+            except Exception as agents_err:
+                logger.warning("Could not load agent list via API: %s. "
+                               "Loading from config file instead.", agents_err)
+                self._load_agents_from_config()
 
             return True
 
@@ -212,6 +228,52 @@ class OpenClawGateway:
                 await self.ws.close()
                 self.ws = None
             return False
+
+    @staticmethod
+    def _load_device_auth() -> dict | None:
+        """Load device auth token from openclaw identity (grants operator scopes)."""
+        import os
+        auth_path = "/home/helix/.openclaw/identity/device-auth.json"
+        if not os.path.exists(auth_path):
+            return None
+        try:
+            with open(auth_path) as f:
+                auth = json.load(f)
+            operator = auth.get("tokens", {}).get("operator")
+            if operator and operator.get("token"):
+                return operator
+        except Exception as e:
+            logger.warning("Failed to load device auth: %s", e)
+        return None
+
+    def _load_agents_from_config(self):
+        """Load agent ID map from the openclaw.json config file as fallback."""
+        import os
+        config_paths = [
+            "/home/openclaw/.openclaw/openclaw.json",  # inside Docker
+            "/home/helix/.openclaw/openclaw.json",     # host
+        ]
+        for config_path in config_paths:
+            if not os.path.exists(config_path):
+                continue
+            try:
+                with open(config_path) as f:
+                    config = json.load(f)
+                agents_list = config.get("agents", {}).get("list", [])
+                for a in agents_list:
+                    gw_id = a.get("id", "")
+                    name = a.get("name", "")
+                    clean_name = re.sub(r'^[^\w]+', '', name).strip()
+                    if clean_name and gw_id:
+                        self._agent_id_map[clean_name] = gw_id
+                        if clean_name == "Helix Director":
+                            self._agent_id_map["Helix"] = gw_id
+                if self._agent_id_map:
+                    logger.info("Loaded %d agent mappings from config file %s",
+                                len(self._agent_id_map), config_path)
+                    return
+            except Exception as e:
+                logger.warning("Failed to load agents from %s: %s", config_path, e)
 
     async def _request(self, method: str, params: dict, timeout: float = 30) -> dict | None:
         """Send a request and wait for the response."""
@@ -346,6 +408,17 @@ class OpenClawGateway:
             self._active_chats.pop(session_key, None)
             await self._remove_active_chat(session_key)
 
+            # Log token usage from the final message
+            usage = message.get("usage") or payload.get("usage") or {}
+            await self._log_token_usage(
+                task_id=task_id,
+                agent_name=chat.get("agent_name"),
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+                model_provider=chat.get("model_provider", "unknown"),
+                model_name=chat.get("model_name", "unknown"),
+            )
+
             if chat_type == "mention" and agent_id:
                 await self._process_mention_result(task_id, agent_id, result_text)
             else:
@@ -381,6 +454,58 @@ class OpenClawGateway:
             return "\n".join(parts)
         return ""
 
+    async def _log_token_usage(self, task_id: int, agent_name: str | None,
+                               input_tokens: int, output_tokens: int,
+                               model_provider: str = "unknown",
+                               model_name: str = "unknown"):
+        """Log token usage to the token_usage table."""
+        if input_tokens == 0 and output_tokens == 0:
+            return
+        try:
+            from app.models.token_usage import TokenUsage
+            async with async_session() as db:
+                task = (await db.execute(
+                    select(Task).options(selectinload(Task.assigned_agent))
+                    .where(Task.id == task_id)
+                )).scalar_one_or_none()
+                if not task:
+                    return
+
+                org_id = task.assigned_agent.org_id if task.assigned_agent else None
+                if not org_id:
+                    return
+
+                usage = TokenUsage(
+                    org_id=org_id,
+                    agent_id=task.assigned_agent_id,
+                    model_provider=model_provider or "unknown",
+                    model_name=model_name or "unknown",
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=input_tokens + output_tokens,
+                    task_id=task_id,
+                )
+                db.add(usage)
+                await db.commit()
+                logger.info("Token usage: task=%d agent=%s tokens=%d (%s/%s)",
+                            task_id, agent_name, input_tokens + output_tokens,
+                            model_provider, model_name)
+        except Exception as e:
+            logger.warning("Failed to log token usage: %s", e)
+
+    @staticmethod
+    async def resolve_agent_model(db, agent: Agent, org_id: int) -> dict:
+        """Resolve which model to use: agent override takes priority, else org default."""
+        from app.models.organization_settings import OrganizationSettings
+        if agent.model_provider and agent.model_name:
+            return {"provider": agent.model_provider, "model": agent.model_name}
+        settings = (await db.execute(
+            select(OrganizationSettings).where(OrganizationSettings.org_id == org_id)
+        )).scalar_one_or_none()
+        if settings and settings.model_provider:
+            return {"provider": settings.model_provider, "model": settings.model_name}
+        return {"provider": "unknown", "model": "unknown"}
+
     async def dispatch_task(self, task: Task, agent: Agent) -> None:
         """Send a task to an agent via chat.send."""
         if not self.ws or self.ws.state.name != "OPEN":
@@ -393,15 +518,28 @@ class OpenClawGateway:
         session_key = f"agent:{gw_agent_id}:main"
         idem_key = str(uuid.uuid4())
 
+        # Resolve model for this agent (for logging)
+        model_info = {"provider": "unknown", "model": "unknown"}
+        if agent.org_id:
+            try:
+                async with async_session() as db:
+                    model_info = await self.resolve_agent_model(db, agent, agent.org_id)
+            except Exception:
+                pass
+
         # Format the task as a chat message
         prompt = self._build_task_prompt(task)
 
-        # Track this chat
+        # Track this chat (include model info for token usage logging)
+        import time as _time
         chat_data = {
             "task_id": task.id,
             "text": "",
             "agent_name": agent.name,
             "chat_type": "task",
+            "model_provider": model_info["provider"],
+            "model_name": model_info["model"],
+            "started_at": _time.time(),
         }
         self._active_chats[session_key] = chat_data
         await self._save_active_chat(session_key, chat_data)
@@ -453,6 +591,7 @@ class OpenClawGateway:
 
     async def _process_task_result(self, task_id: int, result_text: str, status: str):
         """Update task in database with the agent's result."""
+        result_text = self._clean_markdown(result_text)
         async with async_session() as db:
             stmt = (
                 select(Task)
@@ -545,10 +684,17 @@ class OpenClawGateway:
 
         session_key = f"agent:{gw_agent_id}:main"
 
-        # Don't send if agent is already in an active chat on this session
+        # If agent has a stale active chat (>5 min), clear it
         if session_key in self._active_chats:
-            logger.warning("Agent %s already has active chat, skipping mention", agent.name)
-            return
+            import time
+            chat_start = self._active_chats[session_key].get("started_at", 0)
+            if time.time() - chat_start > 300:  # 5 minutes
+                logger.warning("Clearing stale active chat for agent %s (>5min)", agent.name)
+                self._active_chats.pop(session_key, None)
+                await self._remove_active_chat(session_key)
+            else:
+                logger.warning("Agent %s already has active chat, skipping mention", agent.name)
+                return
 
         prompt = (
             f"You were @mentioned in a comment on a task.\n\n"
@@ -566,12 +712,14 @@ class OpenClawGateway:
         idem_key = str(uuid.uuid4())
 
         # Track this chat as a mention (not a task dispatch)
+        import time as _time
         chat_data = {
             "task_id": task.id,
             "agent_id": agent.id,
             "text": "",
             "agent_name": agent.name,
             "chat_type": "mention",
+            "started_at": _time.time(),
         }
         self._active_chats[session_key] = chat_data
         await self._save_active_chat(session_key, chat_data)
@@ -596,8 +744,18 @@ class OpenClawGateway:
             await self._remove_active_chat(session_key)
             raise ConnectionError(f"Failed to send mention chat: {e}")
 
+    @staticmethod
+    def _clean_markdown(text: str) -> str:
+        """Strip markdown bold/italic markers that don't render in plain text comments."""
+        # **bold** -> bold, *italic* -> italic, __bold__ -> bold, _italic_ -> italic
+        cleaned = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        cleaned = re.sub(r'__(.+?)__', r'\1', cleaned)
+        # Don't strip single * or _ as they're used in normal text
+        return cleaned
+
     async def _process_mention_result(self, task_id: int, agent_id: int, result_text: str):
         """Post the agent's mention response as a comment on the task."""
+        result_text = self._clean_markdown(result_text)
         async with async_session() as db:
             # Resolve agent name for display
             agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()

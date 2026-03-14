@@ -39,9 +39,12 @@ def _model_to_out(model: AIModel) -> AIModelOut:
 @router.get("/", response_model=list[AIModelOut])
 async def list_models(
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
-    result = await db.execute(select(AIModel).order_by(AIModel.created_at.desc()))
+    org_id = user.org_id
+    result = await db.execute(
+        select(AIModel).where(AIModel.org_id == org_id).order_by(AIModel.created_at.desc())
+    )
     return [_model_to_out(m) for m in result.scalars().all()]
 
 
@@ -49,9 +52,11 @@ async def list_models(
 async def create_model(
     body: AIModelCreate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
+    org_id = user.org_id
     model = AIModel(
+        org_id=org_id,
         provider=body.provider,
         model_name=body.model_name,
         display_name=body.display_name,
@@ -60,7 +65,7 @@ async def create_model(
         is_default=body.is_default,
     )
     if body.is_default:
-        await _clear_default(db)
+        await _clear_default(db, org_id)
     db.add(model)
     await db.commit()
     await db.refresh(model)
@@ -72,9 +77,12 @@ async def update_model(
     model_id: int,
     body: AIModelUpdate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
-    result = await db.execute(select(AIModel).where(AIModel.id == model_id))
+    org_id = user.org_id
+    result = await db.execute(
+        select(AIModel).where(AIModel.id == model_id, AIModel.org_id == org_id)
+    )
     model = result.scalar_one_or_none()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -94,9 +102,12 @@ async def update_model(
 async def delete_model(
     model_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
-    result = await db.execute(select(AIModel).where(AIModel.id == model_id))
+    org_id = user.org_id
+    result = await db.execute(
+        select(AIModel).where(AIModel.id == model_id, AIModel.org_id == org_id)
+    )
     model = result.scalar_one_or_none()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -108,9 +119,12 @@ async def delete_model(
 async def test_model(
     model_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
-    result = await db.execute(select(AIModel).where(AIModel.id == model_id))
+    org_id = user.org_id
+    result = await db.execute(
+        select(AIModel).where(AIModel.id == model_id, AIModel.org_id == org_id)
+    )
     model = result.scalar_one_or_none()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -163,20 +177,25 @@ async def test_model(
 async def set_default_model(
     model_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
-    result = await db.execute(select(AIModel).where(AIModel.id == model_id))
+    org_id = user.org_id
+    result = await db.execute(
+        select(AIModel).where(AIModel.id == model_id, AIModel.org_id == org_id)
+    )
     model = result.scalar_one_or_none()
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
-    await _clear_default(db)
+    await _clear_default(db, org_id)
     model.is_default = True
     await db.commit()
     await db.refresh(model)
     return _model_to_out(model)
 
 
-async def _clear_default(db: AsyncSession):
-    result = await db.execute(select(AIModel).where(AIModel.is_default == True))
+async def _clear_default(db: AsyncSession, org_id: int):
+    result = await db.execute(
+        select(AIModel).where(AIModel.is_default == True, AIModel.org_id == org_id)
+    )
     for m in result.scalars().all():
         m.is_default = False

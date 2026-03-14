@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_user, HELIX_SERVICE_TOKEN
 from app.models.task import Task
+from app.models.board import Board
+from app.models.department import Department
 from app.models.attachment import TaskAttachment
 from app.models.agent import Agent
 from app.models.user import User
@@ -70,8 +72,14 @@ async def upload_attachment(
     user=Depends(get_current_user),
 ):
     """Upload a file attachment to a task."""
-    # Verify task exists
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    # Verify task exists and belongs to user's org
+    org_id = getattr(user, "org_id", None)
+    result = await db.execute(
+        select(Task)
+        .join(Board, Task.board_id == Board.id)
+        .join(Department, Board.department_id == Department.id)
+        .where(Task.id == task_id, Department.org_id == org_id)
+    )
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -164,7 +172,13 @@ async def list_attachments(
     _user=Depends(get_current_user),
 ):
     """List all attachments for a task."""
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    org_id = getattr(_user, "org_id", None)
+    result = await db.execute(
+        select(Task)
+        .join(Board, Task.board_id == Board.id)
+        .join(Department, Board.department_id == Department.id)
+        .where(Task.id == task_id, Department.org_id == org_id)
+    )
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

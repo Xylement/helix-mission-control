@@ -6,7 +6,9 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.deps import get_current_user_or_service as get_current_user
 from app.models.board import Board
+from app.models.department import Department
 from app.models.board_permission import BoardPermission
+from app.models.user import User
 from app.schemas.board import BoardOut
 
 router = APIRouter(prefix="/boards", tags=["boards"])
@@ -18,7 +20,14 @@ async def list_boards(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    q = select(Board).options(selectinload(Board.department)).order_by(Board.id)
+    org_id = getattr(user, "org_id", None)
+    q = (
+        select(Board)
+        .join(Department)
+        .options(selectinload(Board.department))
+        .where(Department.org_id == org_id)
+        .order_by(Board.id)
+    )
     if department_id:
         q = q.where(Board.department_id == department_id)
     result = await db.execute(q)
@@ -31,15 +40,12 @@ async def list_boards(
 
     filtered = []
     for b in boards:
-        # Check if board has any permissions set
         has_perms = (await db.execute(
             select(exists().where(BoardPermission.board_id == b.id))
         )).scalar()
         if not has_perms:
-            # No permissions = open to all
             filtered.append(b)
         else:
-            # Check if user has at least view
             user_perm = (await db.execute(
                 select(BoardPermission).where(
                     BoardPermission.board_id == b.id,

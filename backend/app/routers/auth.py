@@ -37,7 +37,7 @@ async def login(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if user.role == "system":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="System accounts cannot log in")
-    token = create_access_token({"sub": str(user.id)})
+    token = create_access_token({"sub": str(user.id), "org_id": user.org_id})
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 
 
@@ -58,12 +58,12 @@ async def update_profile(
         if new_name != user.name:
             # Check uniqueness across users and agents
             existing_user = (await db.execute(
-                select(User).where(User.name.ilike(new_name), User.id != user.id)
+                select(User).where(User.org_id == user.org_id, User.name.ilike(new_name), User.id != user.id)
             )).scalar_one_or_none()
             if existing_user:
                 raise HTTPException(status_code=400, detail="Name already taken by another user")
             existing_agent = (await db.execute(
-                select(Agent).where(Agent.name.ilike(new_name))
+                select(Agent).where(Agent.org_id == user.org_id, Agent.name.ilike(new_name))
             )).scalar_one_or_none()
             if existing_agent:
                 raise HTTPException(status_code=400, detail="Name already taken by an agent")

@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 1440  # 24 hours
     ENVIRONMENT: str = "development"
-    OPENCLAW_GATEWAY_URL: str = "ws://172.17.0.1:18789"
-    OPENCLAW_GATEWAY_TOKEN: str = "ee066700d4d66994447714edc63976514825f316ad9c161c"
+    OPENCLAW_GATEWAY_URL: str = "ws://gateway:18789"
+    OPENCLAW_GATEWAY_TOKEN: str = ""
 
     class Config:
         env_file = ".env"

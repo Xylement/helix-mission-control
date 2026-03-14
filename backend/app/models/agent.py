@@ -19,6 +19,8 @@ class Agent(Base):
     status: Mapped[str] = mapped_column(String(20), default="offline")  # online | offline | busy
     execution_mode: Mapped[str] = mapped_column(String(20), default="manual")  # auto | manual
     ai_model_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("ai_models.id"), nullable=True)
+    model_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

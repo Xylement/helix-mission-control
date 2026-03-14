@@ -6,6 +6,8 @@ from app.models.user import User
 from app.models.department import Department
 from app.models.board import Board
 from app.models.agent import Agent
+from app.models.organization import Organization
+from app.models.organization_settings import OrganizationSettings
 
 USERS = [
     {"name": "Clement", "email": "clement@galado.com.my", "role": "admin", "password": "helix2024!"},
@@ -58,18 +60,39 @@ async def seed_all(db: AsyncSession):
     if existing:
         return
 
+    # Ensure GALADO org exists
+    org_result = await db.execute(select(Organization).where(Organization.slug == "galado"))
+    org = org_result.scalar_one_or_none()
+    if not org:
+        org = Organization(name="GALADO", slug="galado")
+        db.add(org)
+        await db.flush()
+
+    # Ensure org settings exist
+    settings_result = await db.execute(
+        select(OrganizationSettings).where(OrganizationSettings.org_id == org.id)
+    )
+    if not settings_result.scalar_one_or_none():
+        db.add(OrganizationSettings(
+            org_id=org.id,
+            model_provider="moonshot",
+            model_name="kimi-k2.5",
+            timezone="Asia/Kuala_Lumpur",
+        ))
+
     # Users
     for u in USERS:
         db.add(User(
             name=u["name"], email=u["email"], role=u["role"],
             password_hash=hash_password(u["password"]),
+            org_id=org.id,
         ))
     await db.flush()
 
     # Departments
     dept_map = {}
     for name in DEPARTMENTS:
-        dept = Department(name=name)
+        dept = Department(name=name, org_id=org.id)
         db.add(dept)
         await db.flush()
         dept_map[name] = dept.id
@@ -92,6 +115,7 @@ async def seed_all(db: AsyncSession):
             primary_board_id=board_map[a["board"]],
             status="offline",
             execution_mode="manual",
+            org_id=org.id,
         )
         db.add(agent)
 
@@ -104,11 +128,16 @@ async def ensure_helix_user(db: AsyncSession):
     result = await db.execute(select(User).where(User.email == "helix@system.internal"))
     if result.scalar_one_or_none():
         return
+    # Get the first org
+    org_result = await db.execute(select(Organization).order_by(Organization.id).limit(1))
+    org = org_result.scalar_one_or_none()
+    org_id = org.id if org else 1
     db.add(User(
         name="Helix",
         email="helix@system.internal",
         role="system",
         password_hash=hash_password("helix-system-nologin"),
+        org_id=org_id,
     ))
     await db.commit()
     print("Helix system user created.")

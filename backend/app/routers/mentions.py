@@ -15,16 +15,16 @@ router = APIRouter(prefix="/mentions", tags=["mentions"])
 async def search_mentionables(
     q: str = Query("", min_length=0, max_length=50),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
     """Search agents and users for @mention autocomplete."""
+    org_id = getattr(user, "org_id", None)
     results = []
 
-    # Search agents
     agent_query = (
         select(Agent)
         .options(selectinload(Agent.department))
-        .where(Agent.name.ilike(f"%{q}%"))
+        .where(Agent.org_id == org_id, Agent.name.ilike(f"%{q}%"))
         .limit(10)
     )
     agents = (await db.execute(agent_query)).scalars().all()
@@ -37,8 +37,11 @@ async def search_mentionables(
             "department": a.department.name if a.department else None,
         })
 
-    # Search users
-    user_query = select(User).where(User.name.ilike(f"%{q}%")).limit(10)
+    user_query = (
+        select(User)
+        .where(User.org_id == org_id, User.name.ilike(f"%{q}%"))
+        .limit(10)
+    )
     users = (await db.execute(user_query)).scalars().all()
     for u in users:
         results.append({

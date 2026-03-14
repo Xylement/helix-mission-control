@@ -3,23 +3,27 @@ version: "3.9"
 services:
   db:
     image: postgres:16
+    container_name: helix-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: helix
+      POSTGRES_USER: ${POSTGRES_USER:-helix}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helix_secret_2024}
-      POSTGRES_DB: helix_mc
+      POSTGRES_DB: ${POSTGRES_DB:-helix_mc}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U helix -d helix_mc"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-helix} -d ${POSTGRES_DB:-helix_mc}"]
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - helix-network
 
   redis:
     image: redis:7-alpine
+    container_name: helix-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -28,51 +32,110 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - helix-network
 
-  backend:
+  gateway:
     build:
-      context: ./backend
+      context: ./gateway
       dockerfile: Dockerfile
+    container_name: helix-gateway
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    expose:
+      - "${GATEWAY_PORT:-18789}"
     environment:
-      DATABASE_URL: postgresql+asyncpg://helix:${POSTGRES_PASSWORD:-helix_secret_2024}@db:5432/helix_mc
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET:-helix_jwt_secret_change_me_in_production}
-      ENVIRONMENT: production
-      OPENCLAW_GATEWAY_URL: ws://172.17.0.1:18789
-      OPENCLAW_GATEWAY_TOKEN: ee066700d4d66994447714edc63976514825f316ad9c161c
-      CORS_ORIGINS: https://helix.galado.com.my,http://localhost:3000,http://72.60.232.46:3000
-      HELIX_SERVICE_TOKEN: ba1850dbad92ce5a49b3d09683d1f3983ef930d89abb10a9b2e904cc19e35d8a
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      GA4_PROPERTY_ID: "357446757"
-      GSC_SITE_URL: "sc-domain:galado.com.my"
-      GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/galado-ga4-gsc-service-account.json"
+      - MODEL_PROVIDER=${MODEL_PROVIDER:-moonshot}
+      - MODEL_NAME=${MODEL_NAME:-kimi-k2.5}
+      - MODEL_API_KEY=${MODEL_API_KEY:-}
+      - MODEL_BASE_URL=${MODEL_BASE_URL:-}
+      - MODEL_DISPLAY_NAME=${MODEL_DISPLAY_NAME:-}
+      - MODEL_CONTEXT_WINDOW=${MODEL_CONTEXT_WINDOW:-256000}
+      - MODEL_MAX_TOKENS=${MODEL_MAX_TOKENS:-8192}
+      - GATEWAY_PORT=${GATEWAY_PORT:-18789}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS:-}
+      - GENERATE_CONFIG=${GENERATE_CONFIG:-false}
+      - MC_API_BASE=http://backend:8000
+      - MC_SERVICE_TOKEN=${SERVICE_TOKEN}
     volumes:
-      - /home/helix/.openclaw/workspaces:/home/helix/.openclaw/workspaces
-      - uploads-data:/data/uploads
+      - /home/helix/.openclaw:/home/openclaw/.openclaw
+    networks:
+      - helix-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "const ws = new (require('ws'))('ws://localhost:${GATEWAY_PORT:-18789}'); ws.on('open', () => { ws.close(); process.exit(0); }); ws.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 5000);"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: helix-backend
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-helix}:${POSTGRES_PASSWORD:-helix_secret_2024}@db:5432/${POSTGRES_DB:-helix_mc}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - JWT_SECRET=${JWT_SECRET:-helix_jwt_secret_change_me_in_production}
+      - ENVIRONMENT=production
+      - OPENCLAW_GATEWAY_URL=${GATEWAY_URL:-ws://host.docker.internal:18789}
+      - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - HELIX_SERVICE_TOKEN=${SERVICE_TOKEN}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - GA4_PROPERTY_ID=${GA4_PROPERTY_ID:-}
+      - GSC_SITE_URL=${GSC_SITE_URL:-}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MAX_AGENTS=${MAX_AGENTS:-50}
+    volumes:
+      - /home/helix/.openclaw/workspaces:/home/helix/.openclaw/workspaces
+      - /home/helix/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:ro
+      - /home/helix/.openclaw/identity:/home/helix/.openclaw/identity:ro
+      - uploads-data:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    networks:
+      - helix-network
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_BASE_URL=
+        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
+    container_name: helix-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000
-      NEXT_PUBLIC_API_BASE_URL: ""
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-auto}
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
     depends_on:
       - backend
+    networks:
+      - helix-network
 
 volumes:
   pgdata:
   uploads-data:
+
+networks:
+  helix-network:
+    driver: bridge

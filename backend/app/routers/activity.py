@@ -29,9 +29,10 @@ async def list_activity(
     per_page: int = Query(50, le=100),
     limit: int | None = Query(None, le=200),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
-    q = select(ActivityLog).order_by(ActivityLog.created_at.desc())
+    org_id = user.org_id
+    q = select(ActivityLog).where(ActivityLog.org_id == org_id).order_by(ActivityLog.created_at.desc())
 
     # Legacy filters
     if entity_type:

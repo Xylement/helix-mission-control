@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import require_admin
 from app.models.board import Board
+from app.models.department import Department
 from app.models.board_permission import BoardPermission
 from app.models.user import User
 from app.schemas.board_permission import BoardPermissionCreate, BoardPermissionUpdate, BoardPermissionOut
@@ -12,13 +13,22 @@ from app.schemas.board_permission import BoardPermissionCreate, BoardPermissionU
 router = APIRouter(prefix="/boards", tags=["board-permissions"])
 
 
+async def _get_board_in_org(db: AsyncSession, board_id: int, org_id: int) -> Board | None:
+    result = await db.execute(
+        select(Board)
+        .join(Department)
+        .where(Board.id == board_id, Department.org_id == org_id)
+    )
+    return result.scalar_one_or_none()
+
+
 @router.get("/{board_id}/permissions", response_model=list[BoardPermissionOut])
 async def list_permissions(
     board_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
-    board = (await db.execute(select(Board).where(Board.id == board_id))).scalar_one_or_none()
+    board = await _get_board_in_org(db, board_id, user.org_id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     result = await db.execute(
@@ -48,12 +58,16 @@ async def grant_permission(
     db: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
-    board = (await db.execute(select(Board).where(Board.id == board_id))).scalar_one_or_none()
+    org_id = user.org_id
+    board = await _get_board_in_org(db, board_id, org_id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     if body.permission_level not in ("view", "create", "manage"):
         raise HTTPException(status_code=400, detail="Invalid permission level")
-    target_user = (await db.execute(select(User).where(User.id == body.user_id))).scalar_one_or_none()
+    # Target user must be in same org
+    target_user = (await db.execute(
+        select(User).where(User.id == body.user_id, User.org_id == org_id)
+    )).scalar_one_or_none()
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -93,8 +107,11 @@ async def update_permission(
     perm_id: int,
     body: BoardPermissionUpdate,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
+    board = await _get_board_in_org(db, board_id, user.org_id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
     perm = (await db.execute(
         select(BoardPermission).where(BoardPermission.id == perm_id, BoardPermission.board_id == board_id)
     )).scalar_one_or_none()
@@ -123,8 +140,11 @@ async def revoke_permission(
     board_id: int,
     perm_id: int,
     db: AsyncSession = Depends(get_db),
-    _user=Depends(require_admin),
+    user=Depends(require_admin),
 ):
+    board = await _get_board_in_org(db, board_id, user.org_id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
     perm = (await db.execute(
         select(BoardPermission).where(BoardPermission.id == perm_id, BoardPermission.board_id == board_id)
     )).scalar_one_or_none()

@@ -7,6 +7,8 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.task import Task
 from app.models.agent import Agent
+from app.models.board import Board
+from app.models.department import Department
 from app.models.activity import ActivityLog
 from app.models.user import User
 from app.services.gateway import gateway
@@ -16,7 +18,6 @@ router = APIRouter(prefix="/gateway", tags=["gateway"])
 
 @router.get("/status")
 async def gateway_status(_user=Depends(get_current_user)):
-    """Check OpenClaw Gateway connection status."""
     return {
         "connected": gateway.is_connected,
         "pending_tasks": len(gateway._active_chats),
@@ -29,14 +30,14 @@ async def execute_task(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """
-    Manually trigger task execution via the OpenClaw Gateway.
-    Used for agents with execution_mode="manual" when user clicks "Start".
-    """
+    org_id = user.org_id
+    # Verify task belongs to user's org
     result = await db.execute(
         select(Task)
+        .join(Board, Task.board_id == Board.id)
+        .join(Department, Board.department_id == Department.id)
         .options(selectinload(Task.assigned_agent))
-        .where(Task.id == task_id)
+        .where(Task.id == task_id, Department.org_id == org_id)
     )
     task = result.scalar_one_or_none()
     if not task:
@@ -58,11 +59,11 @@ async def execute_task(
     if not gateway.is_connected:
         raise HTTPException(status_code=503, detail="OpenClaw Gateway is not connected")
 
-    # Update task status to in_progress
     task.status = "in_progress"
     agent.status = "busy"
 
     db.add(ActivityLog(
+        org_id=org_id,
         actor_type="user",
         actor_id=user.id,
         action="task.dispatched",
@@ -74,11 +75,9 @@ async def execute_task(
     await db.commit()
     await db.refresh(task)
 
-    # Dispatch to gateway
     try:
         await gateway.dispatch_task(task, agent)
     except ConnectionError as e:
-        # Revert status on failure
         task.status = "todo"
         agent.status = "online"
         await db.commit()
