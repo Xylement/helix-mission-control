@@ -17,7 +17,7 @@ from app.routers import attachments as attachments_router
 from app.routers import skills as skills_router
 from app.routers import ai_models as ai_models_router
 from app.routers import board_permissions as board_permissions_router
-from app.seed import seed_all
+from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
 from app.services.websocket_manager import manager
@@ -50,6 +50,8 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     async with async_session() as db:
         await seed_all(db)
+    async with async_session() as db:
+        await ensure_helix_user(db)
     # Start OpenClaw Gateway connection
     await gateway.start()
     # Start Redis pub/sub listener for WebSocket broadcasting

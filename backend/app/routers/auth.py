@@ -35,6 +35,8 @@ async def login(request: Request, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if user.role == "system":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="System accounts cannot log in")
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 

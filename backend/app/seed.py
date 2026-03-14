@@ -12,6 +12,7 @@ USERS = [
     {"name": "Sherlyn", "email": "sherlyn@galado.com.my", "role": "member", "password": "helix2024!"},
     {"name": "Akram", "email": "akram@galado.com.my", "role": "member", "password": "helix2024!"},
     {"name": "Amy", "email": "amy@galado.com.my", "role": "member", "password": "helix2024!"},
+    {"name": "Helix", "email": "helix@system.internal", "role": "system", "password": "helix-system-nologin"},
 ]
 
 DEPARTMENTS = ["Marketing", "Customer Service", "Operations", "Tech", "Finance & HR"]
@@ -96,3 +97,18 @@ async def seed_all(db: AsyncSession):
 
     await db.commit()
     print("Seed data loaded successfully.")
+
+
+async def ensure_helix_user(db: AsyncSession):
+    """Ensure the Helix system user exists (for DBs seeded before this user was added)."""
+    result = await db.execute(select(User).where(User.email == "helix@system.internal"))
+    if result.scalar_one_or_none():
+        return
+    db.add(User(
+        name="Helix",
+        email="helix@system.internal",
+        role="system",
+        password_hash=hash_password("helix-system-nologin"),
+    ))
+    await db.commit()
+    print("Helix system user created.")

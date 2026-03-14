@@ -33,7 +33,7 @@ async def list_users(
     current_user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).order_by(User.name))
+    result = await db.execute(select(User).where(User.role != "system").order_by(User.name))
     users = result.scalars().all()
     return [
         {

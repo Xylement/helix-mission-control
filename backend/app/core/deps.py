@@ -14,13 +14,14 @@ security = HTTPBearer(auto_error=False)
 HELIX_SERVICE_TOKEN = os.getenv("HELIX_SERVICE_TOKEN", "")
 
 
-class ServiceUser:
-    """Synthetic user for service token auth (Helix Director)."""
-    def __init__(self):
-        self.id = 1  # Maps to Clement (admin) for activity logs
-        self.name = "Helix"
-        self.role = "admin"
-        self.is_service_token = True
+async def _get_helix_user(db: AsyncSession) -> User:
+    """Get the Helix system user from the DB."""
+    result = await db.execute(select(User).where(User.email == "helix@system.internal"))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=500, detail="Helix system user not found")
+    user.is_service_token = True  # type: ignore[attr-defined]
+    return user
 
 
 async def get_current_user(
@@ -49,7 +50,7 @@ async def get_current_user_or_service(
 ):
     """Accept either service token (X-Service-Token header) or JWT Bearer."""
     if x_service_token and HELIX_SERVICE_TOKEN and x_service_token == HELIX_SERVICE_TOKEN:
-        return ServiceUser()
+        return await _get_helix_user(db)
     return await get_current_user(credentials, db)
 
 
