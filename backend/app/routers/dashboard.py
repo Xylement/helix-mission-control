@@ -12,6 +12,7 @@ from app.models.board import Board
 from app.models.department import Department
 from app.models.task import Task
 from app.models.user import User
+from app.services.permissions import get_accessible_board_ids_for_query
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -30,6 +31,14 @@ async def dashboard_stats(
     user: User = Depends(get_current_user),
 ):
     org_id = user.org_id
+    is_admin, restricted_boards, accessible_restricted = await get_accessible_board_ids_for_query(db, user)
+
+    def _board_accessible(board_id: int) -> bool:
+        if is_admin:
+            return True
+        if board_id not in restricted_boards:
+            return True  # no permissions set = open
+        return board_id in accessible_restricted
 
     total_agents = (await db.execute(
         select(func.count(Agent.id)).where(Agent.org_id == org_id)
@@ -38,34 +47,37 @@ async def dashboard_stats(
         select(func.count(Agent.id)).where(Agent.org_id == org_id, Agent.status == "online")
     )).scalar() or 0
 
-    # Get org board IDs for task scoping
-    org_board_ids_q = (
-        select(Board.id)
-        .join(Department)
-        .where(Department.org_id == org_id)
+    # Get all org board IDs, then filter by permission
+    org_boards_result = await db.execute(
+        select(Board.id).join(Department).where(Department.org_id == org_id)
     )
+    all_org_board_ids = [r for r in org_boards_result.scalars().all()]
+    accessible_board_ids = [bid for bid in all_org_board_ids if _board_accessible(bid)]
 
-    in_progress = (await db.execute(
-        select(func.count(Task.id)).where(
-            Task.board_id.in_(org_board_ids_q),
-            Task.status == "in_progress",
-        )
-    )).scalar() or 0
-    awaiting_review = (await db.execute(
-        select(func.count(Task.id)).where(
-            Task.board_id.in_(org_board_ids_q),
-            Task.status == "review",
-        )
-    )).scalar() or 0
+    if accessible_board_ids:
+        in_progress = (await db.execute(
+            select(func.count(Task.id)).where(
+                Task.board_id.in_(accessible_board_ids),
+                Task.status == "in_progress",
+            )
+        )).scalar() or 0
+        awaiting_review = (await db.execute(
+            select(func.count(Task.id)).where(
+                Task.board_id.in_(accessible_board_ids),
+                Task.status == "review",
+            )
+        )).scalar() or 0
 
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    completed_today = (await db.execute(
-        select(func.count(Task.id)).where(
-            Task.board_id.in_(org_board_ids_q),
-            Task.status == "done",
-            Task.updated_at >= today_start,
-        )
-    )).scalar() or 0
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        completed_today = (await db.execute(
+            select(func.count(Task.id)).where(
+                Task.board_id.in_(accessible_board_ids),
+                Task.status == "done",
+                Task.updated_at >= today_start,
+            )
+        )).scalar() or 0
+    else:
+        in_progress = awaiting_review = completed_today = 0
 
     departments_result = await db.execute(
         select(Department).where(Department.org_id == org_id).order_by(Department.name)
@@ -74,21 +86,26 @@ async def dashboard_stats(
 
     dept_list = []
     for dept in departments:
+        board_ids_result = await db.execute(
+            select(Board.id).where(Board.department_id == dept.id)
+        )
+        all_dept_board_ids = [r for r in board_ids_result.scalars().all()]
+        dept_accessible_ids = [bid for bid in all_dept_board_ids if _board_accessible(bid)]
+
+        # Skip departments where user has no accessible boards
+        if not is_admin and not dept_accessible_ids:
+            continue
+
         agent_count = (await db.execute(
             select(func.count(Agent.id)).where(Agent.department_id == dept.id)
         )).scalar() or 0
 
-        board_ids_result = await db.execute(
-            select(Board.id).where(Board.department_id == dept.id)
-        )
-        board_ids = [r for r in board_ids_result.scalars().all()]
-
         task_counts = {"todo": 0, "in_progress": 0, "review": 0, "done": 0}
-        if board_ids:
+        if dept_accessible_ids:
             for status_key in task_counts:
                 count = (await db.execute(
                     select(func.count(Task.id)).where(
-                        Task.board_id.in_(board_ids),
+                        Task.board_id.in_(dept_accessible_ids),
                         Task.status == status_key,
                     )
                 )).scalar() or 0
@@ -120,16 +137,31 @@ async def dashboard_activity(
     user: User = Depends(get_current_user),
 ):
     org_id = user.org_id
+    is_admin_user, restricted_boards, accessible_restricted = await get_accessible_board_ids_for_query(db, user)
+
+    # Fetch more than limit to account for filtering
+    fetch_limit = limit if is_admin_user else limit * 3
     result = await db.execute(
         select(ActivityLog)
         .where(ActivityLog.org_id == org_id)
         .order_by(ActivityLog.created_at.desc())
-        .limit(limit)
+        .limit(fetch_limit)
     )
     activities = result.scalars().all()
 
     out = []
     for a in activities:
+        if len(out) >= limit:
+            break
+
+        # Filter by board permission for non-admin users
+        if not is_admin_user:
+            details = a.details or {}
+            board_id = details.get("board_id")
+            if board_id is not None:
+                board_id = int(board_id)
+                if board_id in restricted_boards and board_id not in accessible_restricted:
+                    continue
         actor_name = None
         actor_department = None
         if a.actor_type == "user" and a.actor_id:

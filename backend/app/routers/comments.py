@@ -20,6 +20,7 @@ from app.schemas.comment import CommentCreate, CommentOut
 from app.services.activity import log_activity
 from app.services.gateway import gateway
 from app.services.notifications import create_notification
+from app.services.permissions import check_board_access
 
 logger = logging.getLogger("helix.comments")
 
@@ -85,6 +86,7 @@ async def list_comments(
     task = await _verify_task_in_org(db, task_id, org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await check_board_access(db, user, task.board_id, "view")
 
     result = await db.execute(
         select(Comment).where(Comment.task_id == task_id).order_by(Comment.created_at)
@@ -110,6 +112,7 @@ async def create_comment(
     task = await _verify_task_in_org(db, task_id, org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await check_board_access(db, user, task.board_id, "view")
 
     # Strip markdown bold/italic from service token posts (agent replies via gateway)
     content = body.content

@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, exists
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,6 +10,11 @@ from app.models.department import Department
 from app.models.board_permission import BoardPermission
 from app.models.user import User
 from app.schemas.board import BoardOut
+from app.services.permissions import (
+    filter_boards_by_permission,
+    check_board_access,
+    get_user_board_permission,
+)
 
 router = APIRouter(prefix="/boards", tags=["boards"])
 
@@ -33,25 +38,36 @@ async def list_boards(
     result = await db.execute(q)
     boards = result.scalars().all()
 
-    # Filter by permissions if user is not admin
-    is_admin = getattr(user, "role", None) == "admin" or getattr(user, "is_service_token", False)
-    if is_admin:
-        return [BoardOut.model_validate(b) for b in boards]
+    filtered, perm_map = await filter_boards_by_permission(db, user, boards)
 
-    filtered = []
-    for b in boards:
-        has_perms = (await db.execute(
-            select(exists().where(BoardPermission.board_id == b.id))
-        )).scalar()
-        if not has_perms:
-            filtered.append(b)
-        else:
-            user_perm = (await db.execute(
-                select(BoardPermission).where(
-                    BoardPermission.board_id == b.id,
-                    BoardPermission.user_id == user.id,
-                )
-            )).scalar_one_or_none()
-            if user_perm:
-                filtered.append(b)
-    return [BoardOut.model_validate(b) for b in filtered]
+    out = []
+    for b in filtered:
+        bo = BoardOut.model_validate(b)
+        bo.user_permission = perm_map.get(b.id, "manage")
+        out.append(bo)
+    return out
+
+
+@router.get("/{board_id}", response_model=BoardOut)
+async def get_board(
+    board_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    org_id = getattr(user, "org_id", None)
+    result = await db.execute(
+        select(Board)
+        .join(Department)
+        .options(selectinload(Board.department))
+        .where(Board.id == board_id, Department.org_id == org_id)
+    )
+    board = result.scalar_one_or_none()
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    await check_board_access(db, user, board_id, "view")
+
+    level = await get_user_board_permission(db, user, board_id)
+    bo = BoardOut.model_validate(board)
+    bo.user_permission = level
+    return bo

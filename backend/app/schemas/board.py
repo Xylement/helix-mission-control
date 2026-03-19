@@ -10,6 +10,7 @@ class BoardOut(BaseModel):
     department_id: int
     department: DepartmentOut | None = None
     created_at: datetime
+    user_permission: str | None = None  # view | create | manage (None for admin)
 
     class Config:
         from_attributes = True

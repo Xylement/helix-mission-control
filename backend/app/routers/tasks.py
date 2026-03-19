@@ -22,6 +22,12 @@ from app.services.gateway import gateway
 from app.services.notifications import create_notification
 from app.services.task_status import validate_transition, ActorType, TaskStatus
 from app.models.board_permission import BoardPermission
+from app.services.permissions import (
+    check_board_access,
+    get_user_board_permission,
+    get_accessible_board_ids_for_query,
+    has_permission,
+)
 
 logger = logging.getLogger("helix.tasks")
 
@@ -30,6 +36,10 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 def _get_org_id(user):
     return getattr(user, "org_id", None)
+
+
+def _is_admin(user) -> bool:
+    return getattr(user, "role", None) == "admin" or getattr(user, "is_service_token", False)
 
 
 async def _verify_task_in_org(db: AsyncSession, task_id: int, org_id: int) -> Task | None:
@@ -44,28 +54,17 @@ async def _verify_task_in_org(db: AsyncSession, task_id: int, org_id: int) -> Ta
     return result.scalar_one_or_none()
 
 
-async def _check_board_permission(db: AsyncSession, user, board_id: int, required_level: str):
-    """Check if user has required permission level on a board. Admin bypasses all."""
-    is_admin = getattr(user, "role", None) == "admin" or getattr(user, "is_service_token", False)
+async def _filter_tasks_by_board_permission(db: AsyncSession, user, tasks: list) -> list:
+    """Filter a list of tasks to only those on boards the user can access."""
+    if _is_admin(user):
+        return tasks
+    is_admin, restricted_boards, accessible_restricted = await get_accessible_board_ids_for_query(db, user)
     if is_admin:
-        return
-    from sqlalchemy import exists
-    has_perms = (await db.execute(
-        select(exists().where(BoardPermission.board_id == board_id))
-    )).scalar()
-    if not has_perms:
-        return
-    user_perm = (await db.execute(
-        select(BoardPermission).where(
-            BoardPermission.board_id == board_id,
-            BoardPermission.user_id == user.id,
-        )
-    )).scalar_one_or_none()
-    if not user_perm:
-        raise HTTPException(status_code=403, detail="Access denied to this board")
-    levels = {"view": 0, "create": 1, "manage": 2}
-    if levels.get(user_perm.permission_level, 0) < levels.get(required_level, 0):
-        raise HTTPException(status_code=403, detail=f"Requires '{required_level}' permission on this board")
+        return tasks
+    return [
+        t for t in tasks
+        if t.board_id not in restricted_boards or t.board_id in accessible_restricted
+    ]
 
 
 async def _verify_board_in_org(db: AsyncSession, board_id: int, org_id: int) -> Board | None:
@@ -102,7 +101,9 @@ async def search_tasks(
         .limit(50)
     )
     result = await db.execute(stmt)
-    return [TaskOut.model_validate(t) for t in result.scalars().all()]
+    tasks = result.scalars().all()
+    tasks = await _filter_tasks_by_board_permission(db, user, tasks)
+    return [TaskOut.model_validate(t) for t in tasks]
 
 
 @router.get("/", response_model=list[TaskOut])
@@ -134,7 +135,9 @@ async def list_tasks(
     elif archived is not None:
         q = q.where(Task.archived == archived)
     result = await db.execute(q)
-    return [TaskOut.model_validate(t) for t in result.scalars().all()]
+    tasks = result.scalars().all()
+    tasks = await _filter_tasks_by_board_permission(db, user, tasks)
+    return [TaskOut.model_validate(t) for t in tasks]
 
 
 @router.post("/", response_model=TaskOut, status_code=201)
@@ -149,7 +152,7 @@ async def create_task(
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    await _check_board_permission(db, user, body.board_id, "create")
+    await check_board_access(db, user, body.board_id, "create")
     task = Task(**body.model_dump(), created_by_user_id=user.id)
     db.add(task)
     await db.flush()
@@ -206,6 +209,7 @@ async def get_task(
     task = await _verify_task_in_org(db, task_id, org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    await check_board_access(db, user, task.board_id, "view")
     return TaskOut.model_validate(task)
 
 
@@ -221,7 +225,28 @@ async def update_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    await _check_board_permission(db, user, task.board_id, "create")
+    # Permission check: CREATE users can only update their own tasks
+    user_level = await get_user_board_permission(db, user, task.board_id)
+    if not has_permission(user_level, "create"):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "insufficient_permission",
+                "message": "You don't have permission to edit tasks on this board",
+                "required": "create",
+                "current": user_level,
+            },
+        )
+    if user_level == "create" and task.created_by_user_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "insufficient_permission",
+                "message": "You can only edit tasks you created on this board",
+                "required": "manage",
+                "current": "create",
+            },
+        )
     if task.status == "done":
         if user.role != "admin":
             raise HTTPException(
@@ -338,13 +363,20 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    await _check_board_permission(db, user, task.board_id, "manage")
+    # Permission check: MANAGE can delete any, CREATE can delete own tasks only
+    user_level = await get_user_board_permission(db, user, task.board_id)
     is_creator = task.created_by_user_id == user.id
-    is_admin = user.role == "admin"
-    if not (is_creator or is_admin):
+    if has_permission(user_level, "manage") or (has_permission(user_level, "create") and is_creator):
+        pass  # allowed
+    else:
         raise HTTPException(
             status_code=403,
-            detail="Only the task creator or admin can delete tasks"
+            detail={
+                "error": "insufficient_permission",
+                "message": "You don't have permission to delete this task",
+                "required": "manage",
+                "current": user_level,
+            },
         )
 
     await db.execute(select(Comment).where(Comment.task_id == task_id).execution_options(synchronize_session="fetch"))
