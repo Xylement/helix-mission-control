@@ -63,7 +63,7 @@ services:
     networks:
       - helix-network
     healthcheck:
-      test: ["CMD", "node", "-e", "const ws = new (require('ws'))('ws://localhost:${GATEWAY_PORT:-18789}'); ws.on('open', () => { ws.close(); process.exit(0); }); ws.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 5000);"]
+      test: ["CMD", "node", "-e", "const ws = new (require('/usr/local/lib/node_modules/ws'))('ws://localhost:${GATEWAY_PORT:-18789}'); ws.on('open', () => { ws.close(); process.exit(0); }); ws.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 5000);"]
       interval: 30s
       timeout: 10s
       start_period: 15s
@@ -89,7 +89,7 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - JWT_SECRET=${JWT_SECRET:-helix_jwt_secret_change_me_in_production}
       - ENVIRONMENT=production
-      - OPENCLAW_GATEWAY_URL=${GATEWAY_URL:-ws://host.docker.internal:18789}
+      - OPENCLAW_GATEWAY_URL=${GATEWAY_URL:-ws://gateway:18789}
       - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - HELIX_SERVICE_TOKEN=${SERVICE_TOKEN}
@@ -99,11 +99,19 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_AGENTS=${MAX_AGENTS:-50}
+      - LICENSE_SERVER_URL=${LICENSE_SERVER_URL:-https://api.helixnode.tech}
+      - LICENSE_KEY=${LICENSE_KEY:-}
     volumes:
       - /home/helix/.openclaw/workspaces:/home/helix/.openclaw/workspaces
       - /home/helix/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:ro
       - /home/helix/.openclaw/identity:/home/helix/.openclaw/identity:ro
       - uploads-data:/data/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     depends_on:
       db:
         condition: service_healthy
@@ -127,7 +135,35 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-auto}
       - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     depends_on:
+      - backend
+    networks:
+      - helix-network
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: helix-caddy
+    restart: unless-stopped
+    profiles:
+      - proxy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.active:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    depends_on:
+      - frontend
       - backend
     networks:
       - helix-network
@@ -135,6 +171,8 @@ services:
 volumes:
   pgdata:
   uploads-data:
+  caddy-data:
+  caddy-config:
 
 networks:
   helix-network:

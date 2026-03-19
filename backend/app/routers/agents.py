@@ -15,6 +15,7 @@ from app.models.board import Board
 from app.models.user import User
 from app.models.activity import ActivityLog
 from app.schemas.agent import AgentOut, AgentCreate, AgentUpdate
+from app.services.license_service import LicenseService
 
 OPENCLAW_WORKSPACE_BASE = "/home/helix/.openclaw/workspaces"
 
@@ -99,6 +100,12 @@ async def create_agent(
     user=Depends(require_admin),
 ):
     org_id = user.org_id
+    # Check license agent limit
+    license_svc = LicenseService(db)
+    allowed, error = await license_svc.can_create_agent()
+    if not allowed:
+        raise HTTPException(status_code=403, detail=error)
+
     # Validate unique name within org (across agents AND users)
     existing_agent = await db.execute(
         select(Agent).where(Agent.org_id == org_id, Agent.name.ilike(body.name))

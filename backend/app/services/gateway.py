@@ -518,17 +518,34 @@ class OpenClawGateway:
         session_key = f"agent:{gw_agent_id}:main"
         idem_key = str(uuid.uuid4())
 
-        # Resolve model for this agent (for logging)
+        # Resolve model and active skills for this agent
         model_info = {"provider": "unknown", "model": "unknown"}
+        skill_context = ""
         if agent.org_id:
             try:
                 async with async_session() as db:
                     model_info = await self.resolve_agent_model(db, agent, agent.org_id)
+
+                    # Resolve active skills for this task context
+                    from app.services.skill_service import SkillService
+                    skill_svc = SkillService(db)
+                    task_tags = task.tags if hasattr(task, "tags") and task.tags else None
+                    active_skills = await skill_svc.resolve_active_skills(
+                        agent.id,
+                        board_id=task.board_id,
+                        task_tags=task_tags,
+                    )
+                    skill_context = SkillService.build_skill_context(active_skills)
+                    if active_skills:
+                        logger.info(
+                            "Injected %d skill(s) into task %d prompt for agent %s",
+                            len(active_skills), task.id, agent.name,
+                        )
             except Exception:
                 pass
 
         # Format the task as a chat message
-        prompt = self._build_task_prompt(task)
+        prompt = self._build_task_prompt(task, skill_context=skill_context)
 
         # Track this chat (include model info for token usage logging)
         import time as _time
@@ -566,9 +583,15 @@ class OpenClawGateway:
             raise ConnectionError(f"Failed to dispatch: {e}")
 
     @staticmethod
-    def _build_task_prompt(task: Task) -> str:
-        """Build a chat prompt from a task, injecting analytics data for relevant agents."""
-        parts = [f"## Task: {task.title}"]
+    def _build_task_prompt(task: Task, *, skill_context: str = "") -> str:
+        """Build a chat prompt from a task, injecting skills and analytics data."""
+        parts = []
+
+        # Inject active skills before the task (agent reads these as domain context)
+        if skill_context:
+            parts.append(skill_context)
+
+        parts.append(f"## Task: {task.title}")
         if task.description:
             parts.append(f"\n{task.description}")
         parts.append(f"\nPriority: {task.priority}")
@@ -625,16 +648,34 @@ class OpenClawGateway:
                 except Exception:
                     pass
 
+            agent_name = task.assigned_agent.name if task.assigned_agent else "Agent"
+            org_id = task.assigned_agent.org_id if task.assigned_agent else None
+
+            from app.models.board import Board as _Board
+            from app.models.department import Department as _Dept
+            activity_meta = {
+                "status": status,
+                "result_preview": result_text[:200] if result_text else None,
+                "actor_name": agent_name,
+                "task_title": task.title,
+            }
+            board = (await db.execute(select(_Board).where(_Board.id == task.board_id))).scalar_one_or_none()
+            if board:
+                activity_meta["board_name"] = board.name
+                activity_meta["board_id"] = board.id
+                dept = (await db.execute(select(_Dept).where(_Dept.id == board.department_id))).scalar_one_or_none()
+                if dept:
+                    activity_meta["department_id"] = dept.id
+                    activity_meta["department_name"] = dept.name
+
             db.add(ActivityLog(
+                org_id=org_id,
                 actor_type="agent",
                 actor_id=task.assigned_agent_id,
                 action="task.submitted_for_review" if status != "error" else "task.failed",
                 entity_type="task",
                 entity_id=task.id,
-                details={
-                    "status": status,
-                    "result_preview": result_text[:200] if result_text else None,
-                },
+                details=activity_meta,
             ))
 
             await db.commit()
@@ -782,6 +823,7 @@ class OpenClawGateway:
                 meta["board_id"] = task.board_id
 
             db.add(ActivityLog(
+                org_id=agent.org_id if agent else None,
                 actor_type="agent",
                 actor_id=agent_id,
                 action="comment.added",

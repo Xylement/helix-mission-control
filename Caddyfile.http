@@ -1,0 +1,29 @@
+:80 {
+    # Backend API (must be before frontend catch-all)
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # WebSocket
+    handle /ws/* {
+        reverse_proxy backend:8000
+    }
+
+    # File uploads/downloads
+    handle /uploads/* {
+        reverse_proxy backend:8000
+    }
+
+    # Frontend — Next.js (catch-all)
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    # Logging
+    log {
+        output file /data/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}

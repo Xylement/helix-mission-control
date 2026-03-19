@@ -15,6 +15,11 @@ RUN mkdir -p /home/openclaw/.openclaw/workspaces \
     /home/openclaw/.openclaw/agents && \
     chown -R openclaw:openclaw /home/openclaw/.openclaw
 
+# Symlink /home/helix -> /home/openclaw so that host-generated
+# paths in openclaw.json (e.g. /home/helix/.openclaw/workspace/...)
+# resolve correctly inside the container.
+RUN ln -s /home/openclaw /home/helix
+
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -25,6 +30,6 @@ WORKDIR /home/openclaw
 EXPOSE 18789
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD node -e "const ws = new (require('ws'))('ws://localhost:18789'); ws.on('open', () => { ws.close(); process.exit(0); }); ws.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 5000);" || exit 1
+    CMD node -e "const ws = new (require('/usr/local/lib/node_modules/ws'))('ws://localhost:18789'); ws.on('open', () => { ws.close(); process.exit(0); }); ws.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 5000);" || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

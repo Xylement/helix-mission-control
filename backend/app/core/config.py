@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     OPENCLAW_GATEWAY_URL: str = "ws://gateway:18789"
     OPENCLAW_GATEWAY_TOKEN: str = ""
+    MARKETPLACE_API_URL: str = "https://api.helixnode.tech"
+    HELIX_VERSION: str = "1.0.0"
 
     class Config:
         env_file = ".env"

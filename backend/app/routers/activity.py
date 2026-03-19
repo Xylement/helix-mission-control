@@ -9,6 +9,9 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.activity import ActivityLog
 from app.models.agent import Agent
+from app.models.board import Board
+from app.models.department import Department
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.comment import ActivityOut
 
@@ -89,25 +92,47 @@ async def _enrich_activities(rows, db: AsyncSession) -> list[dict]:
     out = []
     for a in rows:
         actor_name = None
+        actor_department = None
         if a.actor_type == "user" and a.actor_id:
             user = (await db.execute(select(User).where(User.id == a.actor_id))).scalar_one_or_none()
             actor_name = user.name if user else None
         elif a.actor_type == "agent" and a.actor_id:
             agent = (await db.execute(select(Agent).where(Agent.id == a.actor_id))).scalar_one_or_none()
-            actor_name = agent.name if agent else None
+            if agent:
+                actor_name = agent.name
+                dept = (await db.execute(select(Department).where(Department.id == agent.department_id))).scalar_one_or_none()
+                if dept:
+                    actor_department = dept.name
         elif a.actor_type == "system":
             actor_name = (a.details or {}).get("actor_name", "Helix")
 
         details = a.details or {}
+        metadata = dict(details)
+        board_department = metadata.get("department_name") or None
+
+        if a.entity_type == "task" and a.entity_id and "board_name" not in metadata:
+            task = (await db.execute(select(Task).where(Task.id == a.entity_id))).scalar_one_or_none()
+            if task:
+                if "task_title" not in metadata:
+                    metadata["task_title"] = task.title
+                board = (await db.execute(select(Board).where(Board.id == task.board_id))).scalar_one_or_none()
+                if board:
+                    metadata["board_name"] = board.name
+                    bd = (await db.execute(select(Department).where(Department.id == board.department_id))).scalar_one_or_none()
+                    if bd:
+                        board_department = bd.name
+
         out.append({
             "id": a.id,
             "actor_type": a.actor_type,
             "actor_id": a.actor_id,
             "actor_name": actor_name or details.get("actor_name", "Unknown"),
+            "actor_department": actor_department,
             "action": a.action,
             "target_type": a.entity_type,
             "target_id": a.entity_id,
-            "metadata": details,
+            "metadata": metadata,
+            "board_department": board_department,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         })
     return out

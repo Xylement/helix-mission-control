@@ -306,6 +306,20 @@ async def update_task(
     await db.commit()
     await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
 
+    # Workflow engine hook — advance workflow if this task belongs to one
+    if "status" in updates:
+        new_status = updates["status"]
+        if new_status in ("done", "completed", "approved"):
+            try:
+                from app.services.workflow_engine import WorkflowEngine
+                engine = WorkflowEngine(db)
+                if new_status == "approved":
+                    await engine.on_task_approved(task.id)
+                else:
+                    await engine.on_task_completed(task.id)
+            except Exception as wf_err:
+                logger.error("Workflow hook error for task %d: %s", task.id, wf_err)
+
     if "assigned_agent_id" in updates and updates["assigned_agent_id"]:
         await _maybe_auto_dispatch(task, db, user)
         await db.refresh(task, attribute_names=["assigned_agent", "created_by"])

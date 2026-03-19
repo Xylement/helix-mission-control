@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import String, DateTime, ForeignKey, Integer, Text, Boolean
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -20,7 +21,9 @@ class Task(Base):
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), server_default="{}", nullable=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -131,17 +131,23 @@ async def dashboard_activity(
     out = []
     for a in activities:
         actor_name = None
+        actor_department = None
         if a.actor_type == "user" and a.actor_id:
             u = (await db.execute(select(User).where(User.id == a.actor_id))).scalar_one_or_none()
             actor_name = u.name if u else None
         elif a.actor_type == "agent" and a.actor_id:
             ag = (await db.execute(select(Agent).where(Agent.id == a.actor_id))).scalar_one_or_none()
-            actor_name = ag.name if ag else None
+            if ag:
+                actor_name = ag.name
+                dept = (await db.execute(select(Department).where(Department.id == ag.department_id))).scalar_one_or_none()
+                if dept:
+                    actor_department = dept.name
         elif a.actor_type == "system":
             actor_name = (a.details or {}).get("actor_name", "Helix")
 
         details = a.details or {}
         metadata = dict(details)
+        board_department = metadata.get("department_name") or None
 
         if a.entity_type == "task" and a.entity_id and "board_name" not in metadata:
             task = (await db.execute(
@@ -155,16 +161,21 @@ async def dashboard_activity(
                 )).scalar_one_or_none()
                 if board:
                     metadata["board_name"] = board.name
+                    dept = (await db.execute(select(Department).where(Department.id == board.department_id))).scalar_one_or_none()
+                    if dept:
+                        board_department = dept.name
 
         out.append({
             "id": a.id,
             "actor_type": a.actor_type,
             "actor_id": a.actor_id,
             "actor_name": actor_name or details.get("actor_name", "Unknown"),
+            "actor_department": actor_department,
             "action": a.action,
             "target_type": a.entity_type,
             "target_id": a.entity_id,
             "metadata": metadata,
+            "board_department": board_department,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         })
 

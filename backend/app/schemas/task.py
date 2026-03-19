@@ -13,6 +13,7 @@ class TaskCreate(BaseModel):
     assigned_agent_id: int | None = None
     due_date: datetime | None = None
     requires_approval: bool = False
+    tags: list[str] | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -25,6 +26,7 @@ class TaskUpdate(BaseModel):
     requires_approval: bool | None = None
     result: str | None = None
     archived: bool | None = None
+    tags: list[str] | None = None
 
 
 class TaskOut(BaseModel):
@@ -41,6 +43,7 @@ class TaskOut(BaseModel):
     due_date: datetime | None = None
     requires_approval: bool
     result: str | None = None
+    tags: list[str] | None = None
     archived: bool = False
     created_at: datetime
     updated_at: datetime

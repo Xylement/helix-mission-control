@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import engine, Base, async_session
 from app.routers import auth, departments, boards, agents, tasks, comments, activity, mentions, dashboard
+from app.routers import billing as billing_router
 from app.routers import gateway as gateway_router
 from app.routers import users as users_router
 from app.routers import gateways as gateways_router
@@ -18,9 +19,15 @@ from app.routers import skills as skills_router
 from app.routers import ai_models as ai_models_router
 from app.routers import board_permissions as board_permissions_router
 from app.routers import settings as settings_router
+from app.routers import onboarding as onboarding_router
+from app.routers import org_settings as org_settings_router
+from app.routers import marketplace as marketplace_router
+from app.routers import workflows as workflows_router
+from app.routers import plugins as plugins_router
 from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
+from app.services.license_service import LicenseService
 from app.services.websocket_manager import manager
 
 logging.basicConfig(
@@ -29,9 +36,11 @@ logging.basicConfig(
 )
 
 
+logger = logging.getLogger("helix")
+
+
 async def redis_listener():
     """Background task that subscribes to Redis pub/sub and forwards events to WebSocket clients."""
-    logger = logging.getLogger("helix.redis_listener")
     while True:
         try:
             async for event in subscribe_events():
@@ -45,6 +54,18 @@ async def redis_listener():
             await asyncio.sleep(2)
 
 
+async def periodic_license_check():
+    """Validate license every 24 hours."""
+    while True:
+        await asyncio.sleep(86400)
+        try:
+            async with async_session() as db:
+                svc = LicenseService(db)
+                await svc.validate()
+        except Exception as e:
+            logger.error("Periodic license check failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
@@ -53,13 +74,21 @@ async def lifespan(app: FastAPI):
         await seed_all(db)
     async with async_session() as db:
         await ensure_helix_user(db)
+    # Validate license on startup
+    async with async_session() as db:
+        svc = LicenseService(db)
+        result = await svc.validate()
+        if result.get("message"):
+            logger.info("License: %s", result["message"])
     # Start OpenClaw Gateway connection
     await gateway.start()
     # Start Redis pub/sub listener for WebSocket broadcasting
     listener_task = asyncio.create_task(redis_listener())
+    license_task = asyncio.create_task(periodic_license_check())
     yield
     # Shutdown
     listener_task.cancel()
+    license_task.cancel()
     await gateway.stop()
 
 
@@ -79,6 +108,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(billing_router.router, prefix="/api")
 app.include_router(departments.router, prefix="/api")
 app.include_router(boards.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
@@ -96,6 +126,14 @@ app.include_router(skills_router.router, prefix="/api")
 app.include_router(ai_models_router.router, prefix="/api")
 app.include_router(board_permissions_router.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
+app.include_router(onboarding_router.router, prefix="/api")
+app.include_router(org_settings_router.router, prefix="/api")
+app.include_router(marketplace_router.router, prefix="/api")
+app.include_router(workflows_router.router, prefix="/api")
+app.include_router(workflows_router.step_router, prefix="/api")
+app.include_router(workflows_router.exec_router, prefix="/api")
+app.include_router(plugins_router.router, prefix="/api")
+app.include_router(plugins_router.agent_plugin_router, prefix="/api")
 app.include_router(websocket_router.router)
 
 

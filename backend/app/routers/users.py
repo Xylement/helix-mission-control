@@ -8,6 +8,7 @@ from app.core.deps import require_admin
 from app.core.security import hash_password
 from app.models.agent import Agent
 from app.models.user import User
+from app.services.license_service import LicenseService
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -59,6 +60,12 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
 ):
     org_id = current_user.org_id
+    # Check license member limit
+    license_svc = LicenseService(db)
+    allowed, error = await license_svc.can_invite_member()
+    if not allowed:
+        raise HTTPException(status_code=403, detail=error)
+
     # Validate unique name within org
     existing_user = await db.execute(
         select(User).where(User.org_id == org_id, User.name.ilike(body.name))
