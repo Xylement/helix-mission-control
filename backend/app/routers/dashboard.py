@@ -12,7 +12,7 @@ from app.models.board import Board
 from app.models.department import Department
 from app.models.task import Task
 from app.models.user import User
-from app.services.permissions import get_accessible_board_ids_for_query
+from app.services.permissions import get_user_accessible_board_ids
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -31,14 +31,12 @@ async def dashboard_stats(
     user: User = Depends(get_current_user),
 ):
     org_id = user.org_id
-    is_admin, restricted_boards, accessible_restricted = await get_accessible_board_ids_for_query(db, user)
+    is_admin, accessible_ids = await get_user_accessible_board_ids(db, user)
 
     def _board_accessible(board_id: int) -> bool:
         if is_admin:
             return True
-        if board_id not in restricted_boards:
-            return True  # no permissions set = open
-        return board_id in accessible_restricted
+        return board_id in accessible_ids
 
     total_agents = (await db.execute(
         select(func.count(Agent.id)).where(Agent.org_id == org_id)
@@ -137,7 +135,7 @@ async def dashboard_activity(
     user: User = Depends(get_current_user),
 ):
     org_id = user.org_id
-    is_admin_user, restricted_boards, accessible_restricted = await get_accessible_board_ids_for_query(db, user)
+    is_admin_user, accessible_activity_ids = await get_user_accessible_board_ids(db, user)
 
     # Fetch more than limit to account for filtering
     fetch_limit = limit if is_admin_user else limit * 3
@@ -159,8 +157,7 @@ async def dashboard_activity(
             details = a.details or {}
             board_id = details.get("board_id")
             if board_id is not None:
-                board_id = int(board_id)
-                if board_id in restricted_boards and board_id not in accessible_restricted:
+                if int(board_id) not in accessible_activity_ids:
                     continue
         actor_name = None
         actor_department = None

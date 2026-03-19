@@ -25,7 +25,7 @@ from app.models.board_permission import BoardPermission
 from app.services.permissions import (
     check_board_access,
     get_user_board_permission,
-    get_accessible_board_ids_for_query,
+    get_user_accessible_board_ids,
     has_permission,
 )
 
@@ -56,15 +56,10 @@ async def _verify_task_in_org(db: AsyncSession, task_id: int, org_id: int) -> Ta
 
 async def _filter_tasks_by_board_permission(db: AsyncSession, user, tasks: list) -> list:
     """Filter a list of tasks to only those on boards the user can access."""
-    if _is_admin(user):
-        return tasks
-    is_admin, restricted_boards, accessible_restricted = await get_accessible_board_ids_for_query(db, user)
+    is_admin, accessible = await get_user_accessible_board_ids(db, user)
     if is_admin:
         return tasks
-    return [
-        t for t in tasks
-        if t.board_id not in restricted_boards or t.board_id in accessible_restricted
-    ]
+    return [t for t in tasks if t.board_id in accessible]
 
 
 async def _verify_board_in_org(db: AsyncSession, board_id: int, org_id: int) -> Board | None:

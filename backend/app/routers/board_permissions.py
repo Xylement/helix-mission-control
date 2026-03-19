@@ -80,30 +80,6 @@ async def grant_permission(
     if existing:
         raise HTTPException(status_code=400, detail="User already has permission on this board")
 
-    # Check if this board currently has ANY permissions at all
-    # If not, this is the first permission being set — auto-grant "manage" to all
-    # other non-admin members so they don't lose access
-    has_any_perms = (await db.execute(
-        select(BoardPermission).where(BoardPermission.board_id == board_id).limit(1)
-    )).scalar_one_or_none()
-
-    if not has_any_perms:
-        # First permission on this board — grant "manage" to all other members
-        all_members = (await db.execute(
-            select(User).where(
-                User.org_id == org_id,
-                User.role == "member",
-                User.id != body.user_id,
-            )
-        )).scalars().all()
-        for member in all_members:
-            db.add(BoardPermission(
-                board_id=board_id,
-                user_id=member.id,
-                permission_level="manage",
-                granted_by_user_id=user.id,
-            ))
-
     perm = BoardPermission(
         board_id=board_id,
         user_id=body.user_id,

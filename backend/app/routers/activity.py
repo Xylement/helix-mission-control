@@ -14,7 +14,7 @@ from app.models.department import Department
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.comment import ActivityOut
-from app.services.permissions import get_accessible_board_ids_for_query
+from app.services.permissions import get_user_accessible_board_ids
 
 router = APIRouter(prefix="/activity", tags=["activity"])
 
@@ -60,7 +60,7 @@ async def list_activity(
             cast(ActivityLog.details["department_id"].as_string(), String) == str(department_id)
         )
 
-    is_admin_user, restricted_boards, accessible_restricted = await get_accessible_board_ids_for_query(db, user)
+    is_admin_user, accessible_board_ids = await get_user_accessible_board_ids(db, user)
 
     def _activity_accessible(activity_row) -> bool:
         if is_admin_user:
@@ -69,10 +69,7 @@ async def list_activity(
         board_id = details.get("board_id")
         if board_id is None:
             return True  # non-board activity (agent status, etc.)
-        board_id = int(board_id)
-        if board_id not in restricted_boards:
-            return True
-        return board_id in accessible_restricted
+        return int(board_id) in accessible_board_ids
 
     # If legacy limit param is used (backward compat), use simple list response
     if limit is not None:
