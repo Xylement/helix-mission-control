@@ -279,3 +279,8 @@ After every Claude Code session that creates/modifies files:
 **Migration:** `011_widen_license_key_prefix.py` — Widens `license_key_prefix` from VARCHAR(20) to VARCHAR(30).
 
 **License enforcement model:** Without a license key (env or DB), the system returns `valid: false`, `max_agents: 0`, `max_members: 0`. Users must activate a license during onboarding. Existing instances with LICENSE_KEY in .env are unaffected.
+
+### March 19, 2026 — Docs Site: Remove Dashboard Link
+
+**External change (~/helixnode-docs):**
+- `.vitepress/config.mts` — Nav "Links" dropdown: changed `{ text: 'Dashboard', link: 'https://helix.galado.com.my' }` to `{ text: 'Get Started', link: '/getting-started/installation' }`. Removes public link to internal GALADO instance.

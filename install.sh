@@ -24,7 +24,7 @@ set -euo pipefail
 
 # === Configuration ===
 HELIX_VERSION="1.0.0"
-HELIX_REPO="https://github.com/nicholasgalado/helix-mission-control.git"
+HELIX_REPO="https://github.com/Xylement/helix-mission-control.git"
 HELIX_BRANCH="main"
 INSTALL_DIR="/home/helix/helix-mission-control"
 HELIX_USER="helix"
