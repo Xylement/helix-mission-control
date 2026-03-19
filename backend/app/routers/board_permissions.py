@@ -62,7 +62,7 @@ async def grant_permission(
     board = await _get_board_in_org(db, board_id, org_id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
-    if body.permission_level not in ("view", "create", "manage"):
+    if body.permission_level not in ("no_access", "view", "create", "manage"):
         raise HTTPException(status_code=400, detail="Invalid permission level")
     # Target user must be in same org
     target_user = (await db.execute(
@@ -117,7 +117,7 @@ async def update_permission(
     )).scalar_one_or_none()
     if not perm:
         raise HTTPException(status_code=404, detail="Permission not found")
-    if body.permission_level not in ("view", "create", "manage"):
+    if body.permission_level not in ("no_access", "view", "create", "manage"):
         raise HTTPException(status_code=400, detail="Invalid permission level")
     perm.permission_level = body.permission_level
     await db.commit()
