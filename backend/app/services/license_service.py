@@ -25,6 +25,32 @@ class LicenseService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _get_effective_license_key(self) -> str:
+        """Get license key from env first, then fall back to DB."""
+        if LICENSE_KEY:
+            return LICENSE_KEY
+        # Fall back to key stored in license_cache (set during onboarding)
+        try:
+            result = await self.db.execute(text(
+                "SELECT license_key_prefix FROM license_cache WHERE id = 1"
+            ))
+            row = result.fetchone()
+            if row and row.license_key_prefix and len(row.license_key_prefix) > 8:
+                return row.license_key_prefix  # Full key stored here during onboarding
+        except Exception:
+            pass
+        return ""
+
+    async def save_license_key(self, key: str):
+        """Save a license key to DB so it persists across restarts."""
+        await self.db.execute(text("""
+            INSERT INTO license_cache (id, license_key_prefix, plan, status, max_agents, max_members,
+                features, last_validated_at)
+            VALUES (1, :key, 'pending', 'pending', 0, 0, '[]'::jsonb, NOW())
+            ON CONFLICT (id) DO UPDATE SET license_key_prefix = :key
+        """), {"key": key})
+        await self.db.commit()
+
     async def get_instance_id(self) -> str:
         """Get or create a persistent instance ID for this installation."""
         global INSTANCE_ID
@@ -46,7 +72,8 @@ class LicenseService:
         Called on startup and every 24h.
         Returns cached plan info.
         """
-        if not LICENSE_KEY:
+        effective_key = await self._get_effective_license_key()
+        if not effective_key:
             logger.warning("No LICENSE_KEY configured — running in unlicensed mode")
             return self._default_plan()
 
@@ -60,7 +87,7 @@ class LicenseService:
                 resp = await client.post(
                     f"{LICENSE_SERVER_URL}/v1/licenses/validate",
                     json={
-                        "license_key": LICENSE_KEY,
+                        "license_key": effective_key,
                         "instance_id": instance_id,
                         "version": "1.0.0",
                         "current_agents": agent_count,
@@ -70,7 +97,7 @@ class LicenseService:
                 if resp.status_code == 200:
                     data = resp.json()
                     try:
-                        await self._cache_response(data)
+                        await self._cache_response(data, effective_key)
                     except Exception as cache_err:
                         logger.error(f"Failed to cache license response: {cache_err}")
                         await self.db.rollback()
@@ -88,8 +115,9 @@ class LicenseService:
     async def get_plan(self) -> dict:
         """Get current plan info from cache. Does NOT call the license server."""
         plan = await self._get_cached_or_default()
-        if LICENSE_KEY:
-            plan["license_key"] = LICENSE_KEY
+        effective_key = await self._get_effective_license_key()
+        if effective_key:
+            plan["license_key"] = effective_key
         # Check if this license has a Stripe subscription linked
         plan["has_stripe"] = await self._has_stripe_subscription()
         return plan
@@ -193,7 +221,7 @@ class LicenseService:
         except (ValueError, AttributeError):
             return None
 
-    async def _cache_response(self, data: dict):
+    async def _cache_response(self, data: dict, effective_key: str = ""):
         """Store license server response in local DB cache."""
         limits = data.get("limits", {})
         now = datetime.now(timezone.utc)
@@ -201,18 +229,22 @@ class LicenseService:
         features_json = json.dumps(limits.get("features", []))
         response_json = json.dumps(data)
 
+        key_for_storage = effective_key or LICENSE_KEY
+        # Store full key (not just prefix) so DB fallback works when env var is empty
+        key_value = key_for_storage if key_for_storage else ""
+
         await self.db.execute(text("""
             INSERT INTO license_cache (id, license_key_prefix, plan, status, max_agents, max_members,
                 features, trial, trial_ends_at, current_period_end, grace_period_ends, message, last_validated_at, cached_response)
             VALUES (1, :prefix, :plan, :status, :max_agents, :max_members,
                 CAST(:features AS jsonb), :trial, :trial_end, :period_end, :grace_end, :message, :validated_at, CAST(:response AS jsonb))
             ON CONFLICT (id) DO UPDATE SET
-                plan = :plan, status = :status, max_agents = :max_agents, max_members = :max_members,
+                license_key_prefix = :prefix, plan = :plan, status = :status, max_agents = :max_agents, max_members = :max_members,
                 features = CAST(:features AS jsonb), trial = :trial, trial_ends_at = :trial_end,
                 current_period_end = :period_end, grace_period_ends = :grace_end,
                 message = :message, last_validated_at = :validated_at, cached_response = CAST(:response AS jsonb)
         """), {
-            "prefix": LICENSE_KEY[:8] if LICENSE_KEY else "",
+            "prefix": key_value,
             "plan": data.get("plan", "none"),
             "status": data.get("status", "unknown"),
             "max_agents": limits.get("max_agents", 0),
@@ -268,13 +300,13 @@ class LicenseService:
         return self._default_plan()
 
     def _default_plan(self) -> dict:
-        """Default plan when no license is configured — generous defaults."""
+        """Default plan when no license is configured — no access until activated."""
         return {
-            "valid": True,
-            "plan": "unlicensed",
-            "limits": {"max_agents": 999, "max_members": 999, "features": []},
-            "status": "unlicensed",
-            "message": "No license configured. Add LICENSE_KEY to .env to activate.",
+            "valid": False,
+            "plan": "none",
+            "limits": {"max_agents": 0, "max_members": 0, "features": []},
+            "status": "no_license",
+            "message": "No license configured. Please activate a license or start a free trial.",
         }
 
     def _expired_cache_plan(self, row) -> dict:

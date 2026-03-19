@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from sqlalchemy import text
 from app.core.database import engine, Base, async_session
 from app.routers import auth, departments, boards, agents, tasks, comments, activity, mentions, dashboard
 from app.routers import billing as billing_router
@@ -70,6 +71,10 @@ async def periodic_license_check():
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Widen license_key_prefix to store full key for DB-based license persistence
+        await conn.execute(text(
+            "ALTER TABLE license_cache ALTER COLUMN license_key_prefix TYPE VARCHAR(30)"
+        ))
     async with async_session() as db:
         await seed_all(db)
     async with async_session() as db:
