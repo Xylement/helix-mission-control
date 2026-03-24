@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from sqlalchemy import text
+from sqlalchemy import text, select
 from app.core.database import engine, Base, async_session
 from app.routers import auth, departments, boards, agents, tasks, comments, activity, mentions, dashboard
 from app.routers import billing as billing_router
@@ -98,7 +98,10 @@ async def lifespan(app: FastAPI):
         async with async_session() as db:
             await seed_all(db)
     async with async_session() as db:
-        await ensure_helix_user(db)
+        from app.models.organization import Organization
+        org_exists = (await db.execute(select(Organization).limit(1))).scalar_one_or_none()
+        if org_exists:
+            await ensure_helix_user(db)
     # Validate license on startup
     async with async_session() as db:
         svc = LicenseService(db)
