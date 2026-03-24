@@ -338,7 +338,7 @@ export default function TeamPage() {
                 type="email"
                 value={formEmail}
                 onChange={(e) => setFormEmail(e.target.value)}
-                placeholder="email@galado.com.my"
+                placeholder="email@company.com"
               />
             </div>
             <div>

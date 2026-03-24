@@ -77,7 +77,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="you@galado.com.my"
+                  placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -109,7 +109,7 @@ export default function LoginPage() {
         </Card>
 
         <p className="text-center text-[10px] text-muted-foreground/50 mt-6">
-          GALADO SDN BHD
+          Powered by HelixNode
         </p>
       </div>
     </div>

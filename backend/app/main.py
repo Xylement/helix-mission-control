@@ -94,8 +94,9 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE license_cache ALTER COLUMN license_key_prefix TYPE VARCHAR(30)"
         ))
-    async with async_session() as db:
-        await seed_all(db)
+    if os.environ.get("SEED_DATA", "").lower() == "true":
+        async with async_session() as db:
+            await seed_all(db)
     async with async_session() as db:
         await ensure_helix_user(db)
     # Validate license on startup

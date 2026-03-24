@@ -66,7 +66,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </div>
         <div className="flex-1">
           <div className="font-semibold text-sm tracking-tight">HELIX</div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-widest">GALADO</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Mission Control</div>
         </div>
         <ThemeToggle />
         <NotificationBell />
