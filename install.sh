@@ -2,7 +2,7 @@
 #
 # HELIX Mission Control — One-Command Installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/<repo>/main/install.sh | bash
+#   curl -fsSL https://helixnode.tech/install.sh | bash
 #   # or with options:
 #   bash install.sh --domain helix.mycompany.com --email admin@mycompany.com
 #
