@@ -71,7 +71,26 @@ async def periodic_license_check():
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Widen license_key_prefix to store full key for DB-based license persistence
+        # Create license_cache if it doesn't exist (not a SQLAlchemy model)
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS license_cache (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                license_key_prefix VARCHAR(30),
+                plan VARCHAR(50),
+                status VARCHAR(50),
+                max_agents INTEGER DEFAULT 0,
+                max_members INTEGER DEFAULT 0,
+                features JSONB DEFAULT '[]',
+                trial BOOLEAN DEFAULT false,
+                trial_ends_at TIMESTAMP WITH TIME ZONE,
+                current_period_end TIMESTAMP WITH TIME ZONE,
+                grace_period_ends TIMESTAMP WITH TIME ZONE,
+                message TEXT,
+                last_validated_at TIMESTAMP WITH TIME ZONE,
+                cached_response JSONB
+            )
+        """))
+        # Ensure column is wide enough for full key storage
         await conn.execute(text(
             "ALTER TABLE license_cache ALTER COLUMN license_key_prefix TYPE VARCHAR(30)"
         ))
