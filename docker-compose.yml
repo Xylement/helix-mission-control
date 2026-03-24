@@ -40,7 +40,7 @@ services:
       context: ./gateway
       dockerfile: Dockerfile
     container_name: helix-gateway
-    restart: unless-stopped
+    restart: on-failure:5
     expose:
       - "${GATEWAY_PORT:-18789}"
     environment:
@@ -118,7 +118,7 @@ services:
       redis:
         condition: service_healthy
       gateway:
-        condition: service_healthy
+        condition: service_started
     networks:
       - helix-network
 

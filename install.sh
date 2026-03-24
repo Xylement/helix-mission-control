@@ -377,8 +377,15 @@ ENVFILE
         warn ".env already exists, preserving existing config"
     fi
 
+    # Create OpenClaw directories so volume mounts don't fail on fresh install
+    mkdir -p /home/$HELIX_USER/.openclaw/workspaces /home/$HELIX_USER/.openclaw/identity /home/$HELIX_USER/.openclaw/skills
+    if [ ! -f /home/$HELIX_USER/.openclaw/openclaw.json ]; then
+        echo '{}' > /home/$HELIX_USER/.openclaw/openclaw.json
+    fi
+
     # Set ownership
     chown -R "$HELIX_USER:$HELIX_USER" "$INSTALL_DIR"
+    chown -R "$HELIX_USER:$HELIX_USER" /home/$HELIX_USER/.openclaw
 
     # Select Caddyfile
     if [ "$SKIP_PROXY" != "true" ]; then

@@ -3,6 +3,18 @@ set -e
 
 echo "=== HELIX Gateway Container Starting ==="
 
+# If no API key is configured, wait until one is provided (e.g. after onboarding)
+if [ -z "${MODEL_API_KEY}" ]; then
+    echo "============================================"
+    echo "  No AI model key configured."
+    echo "  Gateway will start after onboarding."
+    echo "  Waiting for MODEL_API_KEY to be set..."
+    echo "============================================"
+    while true; do
+        sleep 30
+    done
+fi
+
 # Generate openclaw.json from environment variables
 CONFIG_DIR="/home/openclaw/.openclaw"
 CONFIG_FILE="$CONFIG_DIR/openclaw.json"
