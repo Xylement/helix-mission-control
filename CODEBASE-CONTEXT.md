@@ -482,3 +482,10 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Added guard after loading `openclaw.json`: if the config has an `"auth"` key or `"agents.list"` array with entries, the sync is skipped entirely and logs the reason.
 - Only proceeds on fresh installs where the config is minimal (empty `{}` or just gateway/tools scaffolding).
 - Three-layer protection: (1) `MODEL_API_KEY` env set → skip, (2) config has auth profiles → skip, (3) config has registered agents → skip.
+
+### March 25, 2026 — Kimi Code in Settings > AI Models Page
+
+**Problem:** The Settings > AI Models page (`frontend/src/app/settings/models/page.tsx`) had hardcoded provider maps that didn't include Kimi Code.
+
+**frontend/src/app/settings/models/page.tsx:**
+- Added `kimi_code` to `PROVIDER_BASE_URLS` (`https://api.kimi.com/coding/`), `PROVIDER_LABELS` (`"Kimi Code"`), `PROVIDER_COLORS` (purple), `PROVIDER_SUGGESTIONS` (`["kimi-for-coding"]`), and `PROVIDERS` array (before `"custom"`).
