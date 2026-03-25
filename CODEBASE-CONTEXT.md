@@ -375,7 +375,8 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 
 **backend/app/services/gateway.py:**
 - Added `_register_missing_agents()` — after connecting to gateway and loading agent list, checks all DB agents and registers any missing from gateway via `agents.create`. Idempotent (skips existing).
-- Added `_register_single_agent(name, system_prompt)` — registers one agent with gateway. Creates workspace dir + SOUL.md if missing. ID format: `mc-agent-{name_lowercase}`.
+- Added `_register_single_agent(name, system_prompt)` — registers one agent with gateway. Creates workspace dir + SOUL.md if missing. Does NOT send `id` — lets OpenClaw assign it, then reads back the assigned ID from the response or falls back to `_find_agent_id_by_name()` lookup.
+- Added `_find_agent_id_by_name(name)` — looks up a gateway agent ID by name via `agents.list`.
 - Added `unregister_agent(agent_name)` — removes agent from gateway via `agents.delete`.
 
 **backend/app/routers/agents.py:**
