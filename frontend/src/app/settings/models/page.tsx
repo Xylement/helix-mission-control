@@ -39,6 +39,7 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
   nvidia: "https://integrate.api.nvidia.com/v1",
+  kimi_code: "https://api.kimi.com/coding/",
   custom: "",
 };
 
@@ -47,6 +48,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   nvidia: "NVIDIA",
+  kimi_code: "Kimi Code",
   custom: "Custom",
 };
 
@@ -55,6 +57,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   openai: "bg-green-500/15 text-green-600 dark:text-green-400",
   anthropic: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
   nvidia: "bg-lime-500/15 text-lime-600 dark:text-lime-400",
+  kimi_code: "bg-purple-500/15 text-purple-600 dark:text-purple-400",
   custom: "bg-gray-500/15 text-gray-600 dark:text-gray-400",
 };
 
@@ -63,10 +66,11 @@ const PROVIDER_SUGGESTIONS: Record<string, string[]> = {
   openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
   anthropic: ["claude-sonnet-4-20250514", "claude-haiku-4-20250414", "claude-opus-4-20250514"],
   nvidia: ["meta/llama-3.1-405b-instruct", "meta/llama-3.1-70b-instruct", "mistralai/mixtral-8x22b-instruct-v0.1"],
+  kimi_code: ["kimi-for-coding"],
   custom: [],
 };
 
-const PROVIDERS = ["moonshot", "openai", "anthropic", "nvidia", "custom"];
+const PROVIDERS = ["moonshot", "openai", "anthropic", "nvidia", "kimi_code", "custom"];
 
 export default function AIModelsPage() {
   const { user } = useAuth();
