@@ -39,7 +39,7 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
   nvidia: "https://integrate.api.nvidia.com/v1",
-  kimi_code: "https://api.kimi.com/coding/",
+  kimi_code: "https://api.kimi.com/coding/v1",
   custom: "",
 };
 

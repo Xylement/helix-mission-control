@@ -488,4 +488,17 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **Problem:** The Settings > AI Models page (`frontend/src/app/settings/models/page.tsx`) had hardcoded provider maps that didn't include Kimi Code.
 
 **frontend/src/app/settings/models/page.tsx:**
-- Added `kimi_code` to `PROVIDER_BASE_URLS` (`https://api.kimi.com/coding/`), `PROVIDER_LABELS` (`"Kimi Code"`), `PROVIDER_COLORS` (purple), `PROVIDER_SUGGESTIONS` (`["kimi-for-coding"]`), and `PROVIDERS` array (before `"custom"`).
+- Added `kimi_code` to `PROVIDER_BASE_URLS` (`https://api.kimi.com/coding/v1`), `PROVIDER_LABELS` (`"Kimi Code"`), `PROVIDER_COLORS` (purple), `PROVIDER_SUGGESTIONS` (`["kimi-for-coding"]`), and `PROVIDERS` array (before `"custom"`).
+
+### March 25, 2026 — Kimi Code API Format Fix (correct: OpenAI-completions)
+
+**Problem:** Kimi Code returned HTTP 404 on fresh installs during onboarding AI model test. The previous fix (March 25 "Kimi Code API Format Fix") incorrectly switched to `anthropic-messages` format and removed `/v1` from the base URL. Kimi Code's third-party agent docs confirm the correct endpoint is `https://api.kimi.com/coding/v1` with OpenAI chat completions format.
+
+**backend/app/services/model_providers.py:**
+- `kimi_code` provider: `api_type` changed from `"anthropic-messages"` back to `"openai-completions"`, `base_url` corrected to `https://api.kimi.com/coding/v1`.
+
+**gateway/entrypoint.sh:**
+- Both `kimi-coding` and `kimi_code` cases: `API_TYPE` changed to `"openai-completions"`, `BASE_URL` corrected to `https://api.kimi.com/coding/v1`.
+
+**frontend/src/app/settings/models/page.tsx:**
+- `PROVIDER_BASE_URLS.kimi_code` updated to `https://api.kimi.com/coding/v1`.
