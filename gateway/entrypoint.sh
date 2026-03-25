@@ -62,12 +62,12 @@ case "${MODEL_PROVIDER:-moonshot}" in
     API_TYPE="openai-completions"
     ;;
   kimi-coding)
-    BASE_URL="${MODEL_BASE_URL:-https://api.kimi.com/coding/v1}"
+    BASE_URL="${MODEL_BASE_URL:-https://api.moonshot.ai/v1}"
     API_KEY_ENV="KIMI_API_KEY"
     API_TYPE="openai-completions"
     ;;
   kimi_code)
-    BASE_URL="${MODEL_BASE_URL:-https://api.kimi.com/coding/v1}"
+    BASE_URL="${MODEL_BASE_URL:-https://api.moonshot.ai/v1}"
     API_KEY_ENV="KIMI_API_KEY"
     API_TYPE="openai-completions"
     ;;

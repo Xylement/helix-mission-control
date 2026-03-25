@@ -15563,3 +15563,15 @@ time="2026-03-25T09:55:02Z" level=warning msg="/home/helix/helix-mission-control
  Container helix-frontend Started 
 [2026-03-25 09:55:03] Issues detected:
 - frontend: UNHEALTHY
+[2026-03-25 10:05:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:05:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:05:03] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:10:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:10:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:10:02] Issues detected:
+- frontend: UNHEALTHY

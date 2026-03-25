@@ -241,6 +241,15 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### March 25, 2026 — Kimi Code provider switch to Moonshot platform API
+
+**Problem:** Kimi Code API (`api.kimi.com/coding/v1`) with model `kimi-for-coding` returns 403 "only available for Coding Agents" — restricted to CLI tools. The same `sk-kimi-` API keys work on the Moonshot platform API with model `kimi-k2.5`.
+
+**Changes:**
+- `backend/app/services/model_providers.py` — `kimi_code` provider: `base_url` changed to `https://api.moonshot.ai/v1`, `default_model` to `kimi-k2.5`, models list updated to `kimi-k2.5`, `kimi-k2`, `kimi-k2-thinking`, `kimi-k2-turbo-preview`
+- `gateway/entrypoint.sh` — both `kimi-coding` and `kimi_code` cases: `BASE_URL` changed to `https://api.moonshot.ai/v1`
+- `frontend/src/app/settings/models/page.tsx` — `PROVIDER_BASE_URLS.kimi_code` updated to `https://api.moonshot.ai/v1`, `PROVIDER_SUGGESTIONS.kimi_code` updated to new model list
+
 ### March 25, 2026 — Fix task creation crash on gateway dispatch failure
 
 **Problem:** Creating a task assigned to an agent would save the task to DB, then call `_maybe_auto_dispatch()`. If the agent wasn't registered in the gateway, `dispatch_task()` raised `ValueError` which bubbled up as a 500 error. The task was already committed but the frontend got an error, so users clicked Create again causing duplicates.

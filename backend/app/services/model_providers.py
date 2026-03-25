@@ -44,12 +44,15 @@ PROVIDERS = {
     },
     "kimi_code": {
         "name": "Kimi Code",
-        "base_url": "https://api.kimi.com/coding/v1",
+        "base_url": "https://api.moonshot.ai/v1",
         "api_type": "openai-completions",
         "key_prefix": "sk-kimi-",
-        "default_model": "kimi-for-coding",
+        "default_model": "kimi-k2.5",
         "models": [
-            {"id": "kimi-for-coding", "name": "Kimi for Coding", "context_window": 262144, "max_tokens": 32768},
+            {"id": "kimi-k2.5", "name": "Kimi K2.5", "context_window": 262144, "max_tokens": 32768},
+            {"id": "kimi-k2", "name": "Kimi K2", "context_window": 262144, "max_tokens": 32768},
+            {"id": "kimi-k2-thinking", "name": "Kimi K2 Thinking", "context_window": 262144, "max_tokens": 32768},
+            {"id": "kimi-k2-turbo-preview", "name": "Kimi K2 Turbo Preview", "context_window": 262144, "max_tokens": 32768},
         ],
     },
     "custom": {
