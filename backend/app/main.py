@@ -108,6 +108,8 @@ async def lifespan(app: FastAPI):
         result = await svc.validate()
         if result.get("message"):
             logger.info("License: %s", result["message"])
+    # Sync model config from DB to gateway config if MODEL_API_KEY env is empty
+    await gateway.sync_model_config_from_db()
     # Start OpenClaw Gateway connection
     await gateway.start()
     # Start Redis pub/sub listener for WebSocket broadcasting

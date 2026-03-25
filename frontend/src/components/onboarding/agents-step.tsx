@@ -23,11 +23,18 @@ export function AgentsStep({ onNext, onSkip }: AgentsStepProps) {
   const [customAgents, setCustomAgents] = useState<
     Array<{ name: string; role_title: string; system_prompt: string }>
   >([]);
+  const [maxAgents, setMaxAgents] = useState<number>(5);
+  const [planName, setPlanName] = useState<string>("trial");
 
   const loadTemplates = useCallback(async () => {
     try {
-      const data = await api.onboardingTemplates();
+      const [data, limit] = await Promise.all([
+        api.onboardingTemplates(),
+        api.onboardingAgentLimit(),
+      ]);
       setTemplates(data);
+      setMaxAgents(limit.max_agents);
+      setPlanName(limit.plan);
       setSelected(new Set(data.agent_packs.map((p) => p.key)));
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to load templates");
@@ -40,11 +47,33 @@ export function AgentsStep({ onNext, onSkip }: AgentsStepProps) {
     loadTemplates();
   }, [loadTemplates]);
 
+  // Count total selected agents
+  const selectedAgentCount = (() => {
+    let count = customAgents.filter((a) => a.name.trim()).length;
+    templates?.agent_packs.forEach((pack) => {
+      if (selected.has(pack.key)) count += pack.count;
+    });
+    return count;
+  })();
+
+  const atLimit = selectedAgentCount >= maxAgents;
+
   const toggleSelect = (key: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        // Check if adding this pack would exceed the limit
+        const pack = templates?.agent_packs.find((p) => p.key === key);
+        const packCount = pack?.count || 0;
+        const currentWithout = selectedAgentCount - (prev.has(key) ? packCount : 0);
+        if (currentWithout + packCount > maxAgents) {
+          toast.error(`Agent limit reached (${maxAgents} max for ${planName} plan)`);
+          return prev;
+        }
+        next.add(key);
+      }
       return next;
     });
   };
@@ -105,6 +134,14 @@ export function AgentsStep({ onNext, onSkip }: AgentsStepProps) {
         <p className="text-muted-foreground text-sm">
           Choose agent packs for each department. Agents handle tasks autonomously.
         </p>
+        <div className={`inline-flex items-center gap-1.5 text-sm font-medium mt-1 px-3 py-1 rounded-full ${
+          atLimit
+            ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+            : "bg-primary/10 text-primary"
+        }`}>
+          {selectedAgentCount}/{maxAgents} agents selected
+          {atLimit && <span className="text-xs"> — limit reached for {planName} plan</span>}
+        </div>
       </div>
 
       <div className="grid gap-3">
@@ -213,7 +250,7 @@ export function AgentsStep({ onNext, onSkip }: AgentsStepProps) {
         </Card>
       ))}
 
-      <Button variant="outline" onClick={addCustom} className="w-full">
+      <Button variant="outline" onClick={addCustom} className="w-full" disabled={atLimit}>
         <Plus className="h-4 w-4 mr-2" /> Add Custom Agent
       </Button>
 

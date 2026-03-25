@@ -24,6 +24,7 @@ from app.models.task import Task
 from app.models.user import User
 from app.models.comment import Comment
 from app.models.activity import ActivityLog
+from app.models.organization_settings import OrganizationSettings
 
 logger = logging.getLogger("helix.gateway")
 
@@ -220,6 +221,9 @@ class OpenClawGateway:
                                "Loading from config file instead.", agents_err)
                 self._load_agents_from_config()
 
+            # Register any DB agents missing from the gateway
+            await self._register_missing_agents()
+
             return True
 
         except Exception as e:
@@ -274,6 +278,74 @@ class OpenClawGateway:
                     return
             except Exception as e:
                 logger.warning("Failed to load agents from %s: %s", config_path, e)
+
+    async def _register_missing_agents(self):
+        """Check DB agents against gateway and register any missing ones."""
+        try:
+            async with async_session() as db:
+                all_agents = (await db.execute(select(Agent))).scalars().all()
+                if not all_agents:
+                    return
+
+                registered = 0
+                for agent in all_agents:
+                    if agent.name in self._agent_id_map:
+                        continue  # Already in gateway
+                    gw_id = await self._register_single_agent(agent.name, agent.system_prompt)
+                    if gw_id:
+                        registered += 1
+
+                if registered:
+                    logger.info("Registered %d missing agent(s) with gateway", registered)
+        except Exception as e:
+            logger.warning("Failed to register missing agents: %s", e)
+
+    async def _register_single_agent(self, name: str, system_prompt: str | None = None) -> str | None:
+        """Register a single agent with the OpenClaw gateway. Returns the gateway ID or None."""
+        import os
+        gw_id = f"mc-agent-{name.lower().replace(' ', '-')}"
+        workspace_dir = f"/home/helix/.openclaw/workspaces/{name.lower()}"
+
+        # Create workspace and SOUL.md if needed
+        try:
+            os.makedirs(workspace_dir, exist_ok=True)
+            soul_path = os.path.join(workspace_dir, "SOUL.md")
+            if not os.path.exists(soul_path):
+                from app.routers.agents import sync_soul_md
+                await sync_soul_md(name, system_prompt or f"You are {name}.")
+        except Exception as e:
+            logger.warning("Failed to create workspace for %s: %s", name, e)
+
+        try:
+            resp = await self._send_and_recv("agents.create", {
+                "id": gw_id,
+                "name": name,
+                "workspace": workspace_dir,
+            }, timeout=10)
+            if resp is not None:
+                self._agent_id_map[name] = gw_id
+                logger.info("Registered agent '%s' with gateway (id=%s)", name, gw_id)
+                return gw_id
+        except Exception as e:
+            err_msg = str(e)
+            # Agent may already exist with a different method — try agents.register
+            if "already exists" in err_msg.lower() or "duplicate" in err_msg.lower():
+                self._agent_id_map[name] = gw_id
+                logger.info("Agent '%s' already exists in gateway (id=%s)", name, gw_id)
+                return gw_id
+            logger.warning("Failed to register agent '%s': %s", name, e)
+        return None
+
+    async def unregister_agent(self, agent_name: str):
+        """Remove an agent from the gateway."""
+        gw_id = self._agent_id_map.pop(agent_name, None)
+        if not gw_id or not self.ws or self.ws.state.name != "OPEN":
+            return
+        try:
+            await self._send_and_recv("agents.delete", {"id": gw_id}, timeout=10)
+            logger.info("Unregistered agent '%s' from gateway", agent_name)
+        except Exception as e:
+            logger.warning("Failed to unregister agent '%s': %s", agent_name, e)
 
     async def _request(self, method: str, params: dict, timeout: float = 30) -> dict | None:
         """Send a request and wait for the response."""
@@ -856,6 +928,102 @@ class OpenClawGateway:
     @property
     def is_connected(self) -> bool:
         return self.ws is not None and self.ws.state.name == "OPEN"
+
+
+    async def sync_model_config_from_db(self):
+        """If MODEL_API_KEY env var is empty, read model config from org_settings
+        and write it to the openclaw.json config file for the gateway."""
+        import os
+        if os.environ.get("MODEL_API_KEY"):
+            logger.info("MODEL_API_KEY set in env — skipping DB model config sync")
+            return
+
+        try:
+            from app.core.encryption import decrypt_value
+            async with async_session() as db:
+                settings_row = (await db.execute(
+                    select(OrganizationSettings).limit(1)
+                )).scalar_one_or_none()
+                if not settings_row or not settings_row.model_api_key_encrypted:
+                    logger.info("No model config in DB — gateway will wait for onboarding")
+                    return
+
+                provider = settings_row.model_provider or "moonshot"
+                model_name = settings_row.model_name or "kimi-k2.5"
+                api_key = decrypt_value(settings_row.model_api_key_encrypted)
+                base_url = settings_row.model_base_url or ""
+                display_name = settings_row.model_display_name or model_name
+                context_window = settings_row.model_context_window or 256000
+                max_tokens = settings_row.model_max_tokens or 8192
+
+            # Determine API type and key env name from provider
+            from app.services.model_providers import get_provider_config
+            provider_config = get_provider_config(provider)
+            api_type = provider_config.get("api_type", "openai-completions")
+            if not base_url:
+                base_url = provider_config.get("base_url", "")
+
+            # Map provider to env var name for the API key
+            key_env_map = {
+                "moonshot": "MOONSHOT_API_KEY",
+                "openai": "OPENAI_API_KEY",
+                "anthropic": "ANTHROPIC_API_KEY",
+                "nvidia": "NVIDIA_API_KEY",
+                "kimi_code": "KIMI_API_KEY",
+                "custom": "CUSTOM_API_KEY",
+            }
+            api_key_env = key_env_map.get(provider, "CUSTOM_API_KEY")
+
+            # Write/update openclaw.json
+            config_path = "/home/helix/.openclaw/openclaw.json"
+            config = {}
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path) as f:
+                        config = json.load(f)
+                except (json.JSONDecodeError, Exception):
+                    config = {}
+
+            # Update env section with API key
+            if "env" not in config:
+                config["env"] = {}
+            config["env"][api_key_env] = api_key
+
+            # Update models section
+            config["models"] = {
+                "mode": "merge",
+                "providers": {
+                    provider: {
+                        "baseUrl": base_url,
+                        "apiKey": f"${{{api_key_env}}}",
+                        "api": api_type,
+                        "models": [{
+                            "id": model_name,
+                            "name": display_name,
+                            "reasoning": False,
+                            "input": ["text"],
+                            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+                            "contextWindow": context_window,
+                            "maxTokens": max_tokens,
+                        }],
+                    }
+                },
+            }
+
+            # Update agent defaults
+            if "agents" not in config:
+                config["agents"] = {}
+            if "defaults" not in config["agents"]:
+                config["agents"]["defaults"] = {}
+            config["agents"]["defaults"]["model"] = {"primary": f"{provider}/{model_name}"}
+
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=2)
+
+            logger.info("Synced model config from DB to openclaw.json: %s/%s", provider, model_name)
+
+        except Exception as e:
+            logger.warning("Failed to sync model config from DB: %s", e)
 
 
 # Singleton instance

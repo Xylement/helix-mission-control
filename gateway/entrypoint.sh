@@ -46,6 +46,11 @@ case "${MODEL_PROVIDER:-moonshot}" in
     API_KEY_ENV="KIMI_API_KEY"
     API_TYPE="anthropic-messages"
     ;;
+  kimi_code)
+    BASE_URL="${MODEL_BASE_URL:-https://api.kimi.com/coding/v1}"
+    API_KEY_ENV="KIMI_API_KEY"
+    API_TYPE="openai-completions"
+    ;;
   custom)
     BASE_URL="${MODEL_BASE_URL}"
     API_KEY_ENV="CUSTOM_API_KEY"
@@ -78,7 +83,7 @@ if [ ! -f "$CONFIG_FILE" ] || [ "${GENERATE_CONFIG:-true}" = "true" ]; then
 {
   "env": {
     "${API_KEY_ENV}": "${MODEL_API_KEY}",
-    "MC_API_BASE": "http://${MC_API_BASE:-backend:8000}",
+    "MC_API_BASE": "${MC_API_BASE:-http://backend:8000}",
     "MC_SERVICE_TOKEN": "${MC_SERVICE_TOKEN:-}"
   },
   "agents": {

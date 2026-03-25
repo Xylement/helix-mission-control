@@ -42,6 +42,16 @@ PROVIDERS = {
             {"id": "kimi-k2.5", "name": "Kimi K2.5 (NIM)", "context_window": 256000, "max_tokens": 8192},
         ],
     },
+    "kimi_code": {
+        "name": "Kimi Code",
+        "base_url": "https://api.kimi.com/coding/v1",
+        "api_type": "openai-completions",
+        "key_prefix": "sk-kimi-",
+        "default_model": "kimi-for-coding",
+        "models": [
+            {"id": "kimi-for-coding", "name": "Kimi for Coding", "context_window": 262144, "max_tokens": 32768},
+        ],
+    },
     "custom": {
         "name": "Custom (OpenAI-compatible)",
         "base_url": "",

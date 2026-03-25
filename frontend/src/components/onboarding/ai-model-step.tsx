@@ -207,7 +207,7 @@ export function AIModelStep({ onNext, onSkip }: AIModelStepProps) {
               type={showKey ? "text" : "password"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder={currentProvider?.key_prefix ? `${currentProvider.key_prefix}...` : "sk-..."}
               className="pr-10 font-mono text-sm"
             />
             <button
@@ -218,6 +218,14 @@ export function AIModelStep({ onNext, onSkip }: AIModelStepProps) {
               {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+          {provider === "kimi_code" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Get your API key at{" "}
+              <a href="https://www.kimi.com/code/console" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                kimi.com/code/console
+              </a>
+            </p>
+          )}
         </div>
 
         {/* Base URL */}

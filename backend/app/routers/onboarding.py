@@ -24,6 +24,8 @@ from app.services.onboarding_templates import (
     DEPARTMENT_SUMMARY, AGENT_PACK_SUMMARY,
 )
 
+from sqlalchemy import text as sa_text
+
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
 
@@ -70,6 +72,22 @@ async def get_templates():
         "departments": DEPARTMENT_SUMMARY,
         "agent_packs": AGENT_PACK_SUMMARY,
     }
+
+
+# --- Agent Limit ---
+
+@router.get("/agent-limit")
+async def get_agent_limit(db: AsyncSession = Depends(get_db)):
+    """Return the max_agents from license_cache. No auth — used during onboarding."""
+    try:
+        row = (await db.execute(sa_text(
+            "SELECT max_agents, plan FROM license_cache WHERE id = 1"
+        ))).first()
+        if row:
+            return {"max_agents": row.max_agents or 5, "plan": row.plan or "trial"}
+    except Exception:
+        pass
+    return {"max_agents": 5, "plan": "trial"}
 
 
 # --- Step 2: Create Organization + Admin ---

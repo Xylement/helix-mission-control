@@ -54,6 +54,7 @@ import {
   X,
   Upload,
   Plug,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ExportTemplateModal } from "@/components/marketplace/ExportTemplateModal";
@@ -681,6 +682,9 @@ export default function AgentDetailPage() {
 
   // AI Models
   const [aiModels, setAIModels] = useState<AIModel[]>([]);
+  // Delete
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Plugins
   const [agentPluginsList, setAgentPluginsList] = useState<AgentPluginItem[]>([]);
@@ -809,6 +813,21 @@ export default function AgentDetailPage() {
     }
   };
 
+  const handleDeleteAgent = async () => {
+    if (!agent) return;
+    setDeleting(true);
+    try {
+      await api.deleteAgent(agent.id);
+      toast.success(`Agent "${agent.name}" deleted`);
+      router.push("/agents");
+    } catch {
+      toast.error("Failed to delete agent");
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+
   const fmt = (d: string | null) =>
     d ? new Date(d).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
@@ -927,6 +946,17 @@ export default function AgentDetailPage() {
             <Upload className="h-4 w-4 mr-1" />
             Export
           </Button>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1263,6 +1293,44 @@ export default function AgentDetailPage() {
           resourceName={agent.name}
           onClose={() => setShowExportModal(false)}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowDeleteModal(false)}>
+          <div
+            className="bg-background rounded-xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Delete Agent</h3>
+                <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-sm">
+              Are you sure you want to delete <strong>{agent.name}</strong>? This will:
+            </p>
+            <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+              <li>Unassign all tasks from this agent</li>
+              <li>Remove all agent skills and plugins</li>
+              <li>Delete all comments by this agent</li>
+              <li>Remove the agent from the gateway</li>
+            </ul>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowDeleteModal(false)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteAgent} disabled={deleting}>
+                {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Delete Agent
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

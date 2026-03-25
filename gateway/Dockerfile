@@ -12,7 +12,9 @@ RUN groupadd -g 1001 openclaw && \
 RUN mkdir -p /home/openclaw/.openclaw/workspaces \
     /home/openclaw/.openclaw/identity \
     /home/openclaw/.openclaw/skills \
-    /home/openclaw/.openclaw/agents && \
+    /home/openclaw/.openclaw/agents \
+    /home/openclaw/.openclaw/canvas \
+    /home/openclaw/.openclaw/cron && \
     chown -R openclaw:openclaw /home/openclaw/.openclaw
 
 # Symlink /home/helix -> /home/openclaw so that host-generated

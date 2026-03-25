@@ -365,6 +365,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  onboardingAgentLimit: () =>
+    request<{ max_agents: number; plan: string }>("/onboarding/agent-limit"),
   onboardingStep5: (data: { agent_packs: string[]; custom_agents?: Array<{ name: string; role_title?: string; system_prompt?: string }> }) =>
     request<OnboardingStepResult & { agents_created?: string[] }>("/onboarding/step/5", {
       method: "POST",

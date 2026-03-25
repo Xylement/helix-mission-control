@@ -16,6 +16,7 @@ from app.models.user import User
 from app.models.activity import ActivityLog
 from app.schemas.agent import AgentOut, AgentCreate, AgentUpdate
 from app.services.license_service import LicenseService
+from app.services.gateway import gateway
 
 OPENCLAW_WORKSPACE_BASE = "/home/helix/.openclaw/workspaces"
 
@@ -137,6 +138,10 @@ async def create_agent(
 
     asyncio.create_task(sync_soul_md(agent.name, body.system_prompt))
 
+    # Register with OpenClaw gateway
+    if gateway.is_connected:
+        asyncio.create_task(gateway._register_single_agent(agent.name, body.system_prompt))
+
     db.add(ActivityLog(
         org_id=org_id,
         actor_type="user", actor_id=user.id, action="agent.created",
@@ -169,6 +174,9 @@ async def delete_agent(
     db: AsyncSession = Depends(get_db),
     user=Depends(require_admin),
 ):
+    from app.models.comment import Comment
+    from sqlalchemy import update, delete as sql_delete
+
     org_id = user.org_id
     result = await db.execute(
         select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
@@ -177,6 +185,22 @@ async def delete_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     agent_name = agent.name
+
+    # Nullify tasks assigned to this agent
+    await db.execute(
+        update(Task).where(Task.assigned_agent_id == agent_id).values(assigned_agent_id=None)
+    )
+    # Delete agent_skills
+    from app.models.skill import AgentSkill
+    await db.execute(sql_delete(AgentSkill).where(AgentSkill.agent_id == agent_id))
+    # Delete agent_plugins
+    from app.models.plugin import AgentPlugin
+    await db.execute(sql_delete(AgentPlugin).where(AgentPlugin.agent_id == agent_id))
+    # Delete comments by this agent
+    await db.execute(
+        sql_delete(Comment).where(Comment.author_type == "agent", Comment.author_id == agent_id)
+    )
+
     await db.delete(agent)
     db.add(ActivityLog(
         org_id=org_id,
@@ -184,6 +208,10 @@ async def delete_agent(
         entity_type="agent", entity_id=agent_id, details={"name": agent_name},
     ))
     await db.commit()
+
+    # Unregister from gateway
+    if gateway.is_connected:
+        asyncio.create_task(gateway.unregister_agent(agent_name))
 
 
 @router.patch("/{agent_id}", response_model=AgentOut)
@@ -201,10 +229,15 @@ async def update_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     updates = body.model_dump(exclude_unset=True)
+    old_name = agent.name
     for k, v in updates.items():
         setattr(agent, k, v)
     if "system_prompt" in updates and updates["system_prompt"] is not None:
         asyncio.create_task(sync_soul_md(agent.name, updates["system_prompt"]))
+    # If name changed, re-register with gateway
+    if "name" in updates and updates["name"] != old_name and gateway.is_connected:
+        asyncio.create_task(gateway.unregister_agent(old_name))
+        asyncio.create_task(gateway._register_single_agent(agent.name, agent.system_prompt))
     db.add(ActivityLog(
         org_id=org_id,
         actor_type="user", actor_id=user.id, action="agent.updated",

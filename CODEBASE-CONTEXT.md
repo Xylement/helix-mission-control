@@ -166,7 +166,7 @@
 | Workflow Engine | services/workflow_engine.py | DAG execution, step advancement, task hooks |
 | Workflow Service | services/workflow_service.py | CRUD, feature gating (Pro+) |
 | Plugin Runtime | services/plugin_runtime.py | Execute capabilities, encrypt credentials |
-| Model Providers | services/model_providers.py | 5-provider registry |
+| Model Providers | services/model_providers.py | 6-provider registry (moonshot, openai, anthropic, nvidia, kimi_code, custom) |
 | Permissions | services/permissions.py | Board permission checks, filtering (default-closed model) |
 | Encryption | utils/encryption.py | Fernet encrypt/decrypt (JWT_SECRET derived) |
 
@@ -217,7 +217,7 @@
 - ~~Activity feed lacks department colors~~ — **FIXED** (colorized by department and action type)
 - Frontend health check occasionally shows unhealthy (cosmetic)
 - Billing history is placeholder (links to Stripe Portal)
-- Gateway config sync from DB to container needs restart
+- ~~Gateway config sync from DB to container needs restart~~ — **FIXED** (backend syncs model config from DB to openclaw.json on startup)
 
 ---
 
@@ -284,3 +284,141 @@ After every Claude Code session that creates/modifies files:
 
 **External change (~/helixnode-docs):**
 - `.vitepress/config.mts` — Nav "Links" dropdown: changed `{ text: 'Dashboard', link: 'https://helix.galado.com.my' }` to `{ text: 'Get Started', link: '/getting-started/installation' }`. Removes public link to internal GALADO instance.
+
+### March 19, 2026 — Install Script Repo URL Fix
+
+- `install.sh` — Updated `HELIX_REPO` from `https://github.com/nicholasgalado/helix-mission-control.git` to `https://github.com/Xylement/helix-mission-control.git` (correct GitHub org).
+
+### March 19, 2026 — Docs: Beta Tester Quick Start Page
+
+**External change (~/helixnode-docs):**
+- **New file:** `getting-started/beta-quickstart.md` — Beta tester quickstart guide covering VPS requirements, AI API key providers, license key activation, install command (`curl -fsSL https://helixnode.tech/install.sh | bash`), onboarding wizard walkthrough (8 steps), first things to try (tasks, @mentions, marketplace, workflows, skills), useful Docker commands, and feedback guidelines. Beta plan: Starter (5 agents, 3 members, 90 days free).
+- `.vitepress/config.mts` — Added `{ text: 'Beta Quick Start', link: '/getting-started/beta-quickstart' }` as last item in Getting Started sidebar.
+
+### March 24, 2026 — Install URL Standardization
+
+- `install.sh` — Updated usage comment URL from `raw.githubusercontent.com/<repo>/...` to `https://helixnode.tech/install.sh`
+- **External change (~/helixnode-docs):** `getting-started/installation.md` — Fixed manual install git clone URL from `github.com/helixnode/...` to `github.com/Xylement/helix-mission-control.git`
+- Install script copied to web server at `helixnode.tech/install.sh` — all docs now point to `curl -fsSL https://helixnode.tech/install.sh | bash`
+
+### March 24, 2026 — Repo Cleanup & Docs sudo Fix
+
+**Git repo fixes:**
+- Removed `frontend/.git` nested directory — frontend source files now tracked directly in the main repo (was previously treated as a submodule)
+- Added `frontend/public/.gitkeep` — fixes frontend build failure due to missing public directory
+
+**External change (~/helixnode-docs):**
+- `getting-started/installation.md` — Changed all install commands from `| bash` to `| sudo bash` (5 occurrences)
+- `getting-started/beta-quickstart.md` — Changed install command from `| bash` to `| sudo bash`
+- Rebuilt docs to `/tmp/docs-dist-sudo/` for deployment
+
+### March 24, 2026 — Gateway Graceful Startup on Fresh Install
+
+**Problem:** On fresh installs, the gateway container crashes because MODEL_API_KEY is empty (not configured until onboarding), which blocks the backend from starting (it depended on gateway being healthy).
+
+**docker-compose.yml:**
+- Backend's gateway dependency changed from `condition: service_healthy` to `condition: service_started` — backend starts regardless of gateway health
+- Gateway restart policy changed from `restart: unless-stopped` to `restart: on-failure:5` — retries a few times but doesn't loop forever
+
+**gateway/entrypoint.sh:**
+- Added early check: if MODEL_API_KEY is empty, prints "No AI model key configured. Gateway will start after onboarding." and sleeps in a loop instead of crashing
+
+**install.sh:**
+- Creates placeholder OpenClaw directories before Docker starts: `~/.openclaw/workspaces`, `~/.openclaw/identity`, `~/.openclaw/skills`, and `~/.openclaw/openclaw.json` (empty `{}`) — prevents volume mount failures on fresh install
+- Sets ownership of `~/.openclaw` to helix user
+
+### March 24, 2026 — Fresh Install Migration Fix
+
+**Problem:** Alembic migrations didn't work on a fresh database. Migration 001 was just a stamp (no tables), and migrations 002-011 tried to ALTER tables that didn't exist. Also, `main.py` crashed on fresh install because `ALTER TABLE license_cache` ran before the table was created (license_cache is raw SQL, not a SQLAlchemy model).
+
+**Deleted:** All 11 incremental migration files (`001_initial_stamp` through `011_widen_license_key_prefix`)
+
+**New file:** `backend/alembic/versions/001_initial_schema.py` — Single migration that creates ALL 28 tables from scratch using `op.create_table()` in correct FK dependency order:
+1. organizations → departments → boards → users → ai_models → gateways
+2. agents → tasks → comments → activity_logs → notifications
+3. organization_settings → service_tokens → task_attachments → board_permissions
+4. onboarding_state → token_usage → skills → agent_skills → skill_attachments
+5. installed_templates → workflows → workflow_steps → workflow_executions → workflow_step_executions
+6. installed_plugins → agent_plugins → plugin_executions
+7. license_cache (raw SQL, CREATE TABLE IF NOT EXISTS)
+
+All columns, constraints, indexes, foreign keys, and unique constraints match current SQLAlchemy models.
+
+**main.py fix:** Lifespan now runs `CREATE TABLE IF NOT EXISTS license_cache` before the `ALTER TABLE` to widen `license_key_prefix`, so fresh installs don't crash.
+
+**Existing DB:** Cleared old `alembic_version` and stamped at `001_initial_schema` — no schema changes needed since tables already exist.
+
+### March 24, 2026 — Remove GALADO Branding & Gate Seed Data
+
+**Problem:** Fresh customer installs showed GALADO-specific branding and pre-filled GALADO demo data.
+
+**backend/app/main.py:**
+- `seed_all()` now only runs when `SEED_DATA=true` is set in environment. Fresh installs get empty DB (onboarding wizard creates org/admin). GALADO server has `SEED_DATA=true` in its `.env` manually.
+
+**Frontend branding fixes (all GALADO references removed):**
+- `app/login/page.tsx` — Email placeholder: `you@galado.com.my` → `you@company.com`. Footer: `GALADO SDN BHD` → `Powered by HelixNode`
+- `components/sidebar.tsx` — Subtitle: `GALADO` → `Mission Control`
+- `app/team/page.tsx` — Email placeholder: `email@galado.com.my` → `email@company.com`
+
+**Verified:** `grep -ri galado frontend/src/` returns zero matches.
+
+### March 24, 2026 — Fix ensure_helix_user Crash on Fresh Install
+
+**Problem:** `ensure_helix_user()` in `main.py` lifespan crashes on fresh installs because it falls back to `org_id=1` when no organization exists, violating the FK constraint.
+
+**backend/app/main.py:**
+- Added check: only call `ensure_helix_user(db)` if at least one organization exists in the DB. Fresh installs skip it; the helix system user gets created after onboarding creates the first org.
+
+### March 25, 2026 — Gateway Agent Registration, Model Config Sync, Kimi Code, Agent Delete, Agent Limit Counter
+
+**Fix 1: Gateway Agent Registration on Fresh Install**
+
+**backend/app/services/gateway.py:**
+- Added `_register_missing_agents()` — after connecting to gateway and loading agent list, checks all DB agents and registers any missing from gateway via `agents.create`. Idempotent (skips existing).
+- Added `_register_single_agent(name, system_prompt)` — registers one agent with gateway. Creates workspace dir + SOUL.md if missing. ID format: `mc-agent-{name_lowercase}`.
+- Added `unregister_agent(agent_name)` — removes agent from gateway via `agents.delete`.
+
+**backend/app/routers/agents.py:**
+- `POST /api/agents/` now registers new agents with gateway after creation.
+- `PATCH /api/agents/{id}` re-registers with gateway if name changes.
+- `DELETE /api/agents/{id}` now properly cleans up: nullifies task assignments, deletes agent_skills, agent_plugins, agent comments, then removes from gateway.
+
+**Fix 2: Gateway Container Permissions**
+
+**gateway/Dockerfile:**
+- Added `/home/openclaw/.openclaw/canvas` and `/home/openclaw/.openclaw/cron` directories with correct ownership.
+
+**gateway/entrypoint.sh:**
+- Fixed MC_API_BASE double http:// bug: `"http://${MC_API_BASE:-backend:8000}"` → `"${MC_API_BASE:-http://backend:8000}"`
+
+**Fix 3: Gateway Reads Model Config from DB**
+
+**backend/app/services/gateway.py:**
+- Added `sync_model_config_from_db()` — if `MODEL_API_KEY` env var is empty, reads model config from `organization_settings` table (provider, model, encrypted API key) and writes to `/home/helix/.openclaw/openclaw.json`. Backward compatible: skips if env var is set.
+
+**backend/app/main.py:**
+- Calls `gateway.sync_model_config_from_db()` in lifespan before starting gateway.
+
+**Fix 4: ensure_helix_user already fixed** (March 24 — org existence check already in main.py)
+
+**Feature 5: Delete Agents**
+
+**Backend:** `DELETE /api/agents/{id}` (admin only, 204) — nullifies task assignments, deletes agent_skills, agent_plugins, agent comments, then deletes agent and unregisters from gateway.
+
+**Frontend:** `app/agents/[id]/page.tsx` — Added red "Delete" button (admin only) with confirmation modal. Lists consequences (unassign tasks, remove skills/plugins/comments). On confirm, calls DELETE and redirects to agents list.
+
+**Feature 6: Onboarding Agent Limit Counter**
+
+**Backend:** Added `GET /api/onboarding/agent-limit` (no auth) — returns `{max_agents, plan}` from license_cache. Default: 5 (trial).
+
+**Frontend:** `components/onboarding/agents-step.tsx` — Shows "{n}/{max} agents selected" counter. When limit reached, disables further selection and shows "limit reached for {plan} plan" message.
+
+**Feature 7: Kimi Code AI Model Provider**
+
+**Backend:** `services/model_providers.py` — Added `kimi_code` provider: base_url `https://api.kimi.com/coding/v1`, model `kimi-for-coding`, key_prefix `sk-kimi-`, context 262144, max_tokens 32768, OpenAI-compatible.
+
+**Gateway:** `gateway/entrypoint.sh` — Added `kimi_code` case with correct base URL and `openai-completions` API type.
+
+**Frontend:**
+- `components/onboarding/ai-model-step.tsx` — Dynamic API key placeholder from provider config. Added Kimi Code help link to kimi.com/code/console.
+- `app/settings/model-config/page.tsx` — Added Kimi Code help link for API key.
