@@ -303,7 +303,6 @@ class OpenClawGateway:
     async def _register_single_agent(self, name: str, system_prompt: str | None = None) -> str | None:
         """Register a single agent with the OpenClaw gateway. Returns the gateway ID or None."""
         import os
-        gw_id = f"mc-agent-{name.lower().replace(' ', '-')}"
         workspace_dir = f"/home/helix/.openclaw/workspaces/{name.lower()}"
 
         # Create workspace and SOUL.md if needed
@@ -318,22 +317,44 @@ class OpenClawGateway:
 
         try:
             resp = await self._send_and_recv("agents.create", {
-                "id": gw_id,
                 "name": name,
                 "workspace": workspace_dir,
             }, timeout=10)
             if resp is not None:
-                self._agent_id_map[name] = gw_id
-                logger.info("Registered agent '%s' with gateway (id=%s)", name, gw_id)
-                return gw_id
+                # Read back the ID assigned by OpenClaw
+                gw_id = resp.get("id") or resp.get("agent", {}).get("id", "")
+                if not gw_id:
+                    # Fallback: re-list agents to find the newly created one
+                    gw_id = await self._find_agent_id_by_name(name)
+                if gw_id:
+                    self._agent_id_map[name] = gw_id
+                    logger.info("Registered agent '%s' with gateway (id=%s)", name, gw_id)
+                    return gw_id
+                else:
+                    logger.warning("Registered agent '%s' but could not determine gateway ID", name)
         except Exception as e:
             err_msg = str(e)
-            # Agent may already exist with a different method — try agents.register
+            # Agent may already exist — look it up
             if "already exists" in err_msg.lower() or "duplicate" in err_msg.lower():
-                self._agent_id_map[name] = gw_id
-                logger.info("Agent '%s' already exists in gateway (id=%s)", name, gw_id)
-                return gw_id
+                gw_id = await self._find_agent_id_by_name(name)
+                if gw_id:
+                    self._agent_id_map[name] = gw_id
+                    logger.info("Agent '%s' already exists in gateway (id=%s)", name, gw_id)
+                    return gw_id
             logger.warning("Failed to register agent '%s': %s", name, e)
+        return None
+
+    async def _find_agent_id_by_name(self, name: str) -> str | None:
+        """Look up a gateway agent ID by name via agents.list."""
+        try:
+            resp = await self._send_and_recv("agents.list", {}, timeout=10)
+            if resp:
+                for a in resp.get("agents", []):
+                    a_name = re.sub(r'^[^\w]+', '', a.get("name", "")).strip()
+                    if a_name == name:
+                        return a.get("id", "")
+        except Exception as e:
+            logger.warning("Failed to look up agent '%s': %s", name, e)
         return None
 
     async def unregister_agent(self, agent_name: str):
