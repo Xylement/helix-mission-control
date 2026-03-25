@@ -94,6 +94,10 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE license_cache ALTER COLUMN license_key_prefix TYPE VARCHAR(30)"
         ))
+        # Add description column to boards if missing
+        await conn.execute(text(
+            "ALTER TABLE boards ADD COLUMN IF NOT EXISTS description TEXT"
+        ))
     if os.environ.get("SEED_DATA", "").lower() == "true":
         async with async_session() as db:
             await seed_all(db)

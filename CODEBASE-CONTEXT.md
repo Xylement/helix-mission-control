@@ -241,6 +241,21 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### March 25, 2026 — Department & Board CRUD
+
+**Backend changes:**
+- `models/board.py` — Added `description` field (Text, nullable)
+- `schemas/department.py` — Added `DepartmentCreate`, `DepartmentUpdate` schemas; `DepartmentOut` now includes `emoji`, `sort_order`
+- `schemas/board.py` — Added `BoardCreate`, `BoardUpdate` schemas; `BoardOut` now includes `description`
+- `routers/departments.py` — Added `POST /departments/` (create), `PATCH /departments/{id}` (edit), `DELETE /departments/{id}` (cascade delete with boards/tasks/comments/attachments). Create/edit requires admin or manage permission; delete is admin-only.
+- `routers/boards.py` — Added `POST /boards/` (create), `PATCH /boards/{id}` (edit), `DELETE /boards/{id}` (cascade delete with tasks/comments/attachments). Create/edit requires admin or manage permission; delete is admin-only.
+- `main.py` — Added `ALTER TABLE boards ADD COLUMN IF NOT EXISTS description TEXT` migration
+- Activity logging for all department/board CRUD operations
+
+**Frontend changes:**
+- `lib/api.ts` — Added `createDepartment`, `updateDepartment`, `deleteDepartment`, `createBoard`, `updateBoard`, `deleteBoard` API methods; updated `Department` type (emoji, sort_order) and `Board` type (description)
+- `app/boards/page.tsx` — Full CRUD UI: Add Department button, Add Board card per department, edit/delete via dropdown menus on department headers and board cards, confirmation dialogs for deletes. Permission-gated (admin or manage permission).
+
 ### March 19, 2026 — Board Permission Enforcement
 
 **New file:** `backend/app/services/permissions.py` — Centralized permission checking service

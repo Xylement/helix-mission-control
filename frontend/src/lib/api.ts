@@ -79,10 +79,22 @@ export const api = {
 
   // Departments
   departments: () => request<Department[]>("/departments/"),
+  createDepartment: (data: { name: string; emoji?: string; sort_order?: number }) =>
+    request<Department>("/departments/", { method: "POST", body: JSON.stringify(data) }),
+  updateDepartment: (id: number, data: { name?: string; emoji?: string }) =>
+    request<Department>(`/departments/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteDepartment: (id: number) =>
+    request<{ deleted: boolean; boards_deleted: number; tasks_deleted: number }>(`/departments/${id}`, { method: "DELETE" }),
 
   // Boards
   boards: (departmentId?: number) =>
     request<Board[]>(`/boards/${departmentId ? `?department_id=${departmentId}` : ""}`),
+  createBoard: (data: { name: string; description?: string; department_id: number; sort_order?: number }) =>
+    request<Board>("/boards/", { method: "POST", body: JSON.stringify(data) }),
+  updateBoard: (id: number, data: { name?: string; description?: string }) =>
+    request<Board>(`/boards/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteBoard: (id: number) =>
+    request<{ deleted: boolean; tasks_deleted: number }>(`/boards/${id}`, { method: "DELETE" }),
 
   // Agents
   agents: (params?: { department_id?: number; board_id?: number }) => {
@@ -606,12 +618,15 @@ export interface User {
 export interface Department {
   id: number;
   name: string;
+  emoji?: string | null;
+  sort_order: number;
   created_at: string;
 }
 
 export interface Board {
   id: number;
   name: string;
+  description?: string | null;
   department_id: number;
   department?: Department;
   created_at: string;
