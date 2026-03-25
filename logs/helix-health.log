@@ -15575,3 +15575,63 @@ time="2026-03-25T10:10:02Z" level=warning msg="/home/helix/helix-mission-control
  Container helix-frontend Started 
 [2026-03-25 10:10:02] Issues detected:
 - frontend: UNHEALTHY
+[2026-03-25 10:15:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:15:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:15:02] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:20:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:20:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:20:02] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:25:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:25:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:25:03] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:30:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:30:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:30:03] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:35:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:35:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:35:03] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:40:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:40:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:40:03] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:45:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:45:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:45:03] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:50:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:50:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:50:03] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 10:55:02]   frontend is unhealthy, restarting...
+time="2026-03-25T10:55:02Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 10:55:03] Issues detected:
+- frontend: UNHEALTHY
+[2026-03-25 11:00:03]   frontend is unhealthy, restarting...
+time="2026-03-25T11:00:03Z" level=warning msg="/home/helix/helix-mission-control/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+ Container helix-frontend Restarting 
+ Container helix-frontend Started 
+[2026-03-25 11:00:03] Issues detected:
+- frontend: UNHEALTHY

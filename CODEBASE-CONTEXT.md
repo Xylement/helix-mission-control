@@ -241,6 +241,30 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### March 25, 2026 — Moonshot as default Kimi provider, Kimi Code as advanced option
+
+**Problem:** `kimi_code` provider uses OpenClaw's built-in kimi-coding provider with credentials in OpenClaw's credential store (set up via `openclaw onboard`). This can't be automated by `sync_model_config_from_db()`. Fresh installs need a provider that works automatically.
+
+**Backend — `services/model_providers.py`:**
+- `moonshot` provider updated: name "Moonshot (Kimi K2.5)", `base_url` `https://api.moonshot.ai/v1`, `default_model` `kimi-k2.5`, models `kimi-k2.5/k2/k2-thinking/k2-turbo-preview`, `help_url` for platform.moonshot.ai
+- `kimi_code` provider kept as advanced: name "Kimi Code (Advanced)", `base_url` `https://api.kimi.com/coding/`, `api_type` `anthropic-messages`, `default_model` `k2p5`, `note` field warning about manual setup
+
+**Backend — `services/gateway.py` — `sync_model_config_from_db()`:**
+- When provider is `kimi_code`, skips writing config and logs message about manual OpenClaw setup
+- Removed `kimi_code` from `key_env_map` (can't sync automatically)
+
+**Gateway — `entrypoint.sh`:**
+- `kimi-coding`/`kimi_code` cases restored to `api_type` `anthropic-messages`, `base_url` `https://api.kimi.com/coding/`
+- `moonshot` case unchanged (already `openai-completions`, `api.moonshot.ai/v1`)
+
+**Frontend — `settings/models/page.tsx`:**
+- Updated all provider maps: moonshot label "Moonshot (Kimi K2.5)" with Kimi model suggestions, kimi_code label "Kimi Code (Advanced)" with `k2p5` suggestion
+- Added `PROVIDER_NOTES` map — shows amber warning for kimi_code in add/edit dialog
+
+**Frontend — `components/onboarding/ai-model-step.tsx`:**
+- Added help link to platform.moonshot.ai for moonshot provider
+- Added amber warning for kimi_code about manual setup requirement
+
 ### March 25, 2026 — Kimi Code provider switch to Moonshot platform API
 
 **Problem:** Kimi Code API (`api.kimi.com/coding/v1`) with model `kimi-for-coding` returns 403 "only available for Coding Agents" — restricted to CLI tools. The same `sk-kimi-` API keys work on the Moonshot platform API with model `kimi-k2.5`.

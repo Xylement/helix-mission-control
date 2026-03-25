@@ -39,16 +39,16 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
   nvidia: "https://integrate.api.nvidia.com/v1",
-  kimi_code: "https://api.moonshot.ai/v1",
+  kimi_code: "https://api.kimi.com/coding/",
   custom: "",
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
-  moonshot: "Moonshot",
+  moonshot: "Moonshot (Kimi K2.5)",
   openai: "OpenAI",
   anthropic: "Anthropic",
   nvidia: "NVIDIA",
-  kimi_code: "Kimi Code",
+  kimi_code: "Kimi Code (Advanced)",
   custom: "Custom",
 };
 
@@ -62,12 +62,16 @@ const PROVIDER_COLORS: Record<string, string> = {
 };
 
 const PROVIDER_SUGGESTIONS: Record<string, string[]> = {
-  moonshot: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
+  moonshot: ["kimi-k2.5", "kimi-k2", "kimi-k2-thinking", "kimi-k2-turbo-preview"],
   openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
   anthropic: ["claude-sonnet-4-20250514", "claude-haiku-4-20250414", "claude-opus-4-20250514"],
   nvidia: ["meta/llama-3.1-405b-instruct", "meta/llama-3.1-70b-instruct", "mistralai/mixtral-8x22b-instruct-v0.1"],
-  kimi_code: ["kimi-k2.5", "kimi-k2", "kimi-k2-thinking", "kimi-k2-turbo-preview"],
+  kimi_code: ["k2p5"],
   custom: [],
+};
+
+const PROVIDER_NOTES: Record<string, string> = {
+  kimi_code: "Requires manual OpenClaw setup via SSH. Use Moonshot for automatic setup.",
 };
 
 const PROVIDERS = ["moonshot", "openai", "anthropic", "nvidia", "kimi_code", "custom"];
@@ -369,6 +373,11 @@ export default function AIModelsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {PROVIDER_NOTES[formProvider] && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                  {PROVIDER_NOTES[formProvider]}
+                </p>
+              )}
             </div>
 
             <div>

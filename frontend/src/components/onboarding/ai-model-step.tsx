@@ -218,12 +218,17 @@ export function AIModelStep({ onNext, onSkip }: AIModelStepProps) {
               {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-          {provider === "kimi_code" && (
+          {provider === "moonshot" && (
             <p className="text-xs text-muted-foreground mt-1">
               Get your API key at{" "}
-              <a href="https://www.kimi.com/code/console" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                kimi.com/code/console
+              <a href="https://platform.moonshot.ai/console/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                platform.moonshot.ai
               </a>
+            </p>
+          )}
+          {provider === "kimi_code" && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              Requires manual OpenClaw setup via SSH. Use Moonshot provider instead for automatic configuration.
             </p>
           )}
         </div>

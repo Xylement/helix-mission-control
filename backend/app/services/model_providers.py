@@ -1,12 +1,16 @@
 PROVIDERS = {
     "moonshot": {
-        "name": "Moonshot",
+        "name": "Moonshot (Kimi K2.5)",
         "base_url": "https://api.moonshot.ai/v1",
         "api_type": "openai-completions",
         "key_prefix": "sk-",
         "default_model": "kimi-k2.5",
+        "help_url": "https://platform.moonshot.ai/console/api-keys",
         "models": [
             {"id": "kimi-k2.5", "name": "Kimi K2.5", "context_window": 256000, "max_tokens": 8192},
+            {"id": "kimi-k2", "name": "Kimi K2", "context_window": 256000, "max_tokens": 8192},
+            {"id": "kimi-k2-thinking", "name": "Kimi K2 Thinking", "context_window": 256000, "max_tokens": 8192},
+            {"id": "kimi-k2-turbo-preview", "name": "Kimi K2 Turbo Preview", "context_window": 256000, "max_tokens": 8192},
         ],
     },
     "openai": {
@@ -43,16 +47,14 @@ PROVIDERS = {
         ],
     },
     "kimi_code": {
-        "name": "Kimi Code",
-        "base_url": "https://api.moonshot.ai/v1",
-        "api_type": "openai-completions",
+        "name": "Kimi Code (Advanced)",
+        "base_url": "https://api.kimi.com/coding/",
+        "api_type": "anthropic-messages",
         "key_prefix": "sk-kimi-",
-        "default_model": "kimi-k2.5",
+        "default_model": "k2p5",
+        "note": "Requires manual OpenClaw setup. Use Moonshot provider instead for automatic configuration.",
         "models": [
-            {"id": "kimi-k2.5", "name": "Kimi K2.5", "context_window": 262144, "max_tokens": 32768},
-            {"id": "kimi-k2", "name": "Kimi K2", "context_window": 262144, "max_tokens": 32768},
-            {"id": "kimi-k2-thinking", "name": "Kimi K2 Thinking", "context_window": 262144, "max_tokens": 32768},
-            {"id": "kimi-k2-turbo-preview", "name": "Kimi K2 Turbo Preview", "context_window": 262144, "max_tokens": 32768},
+            {"id": "k2p5", "name": "K2P5", "context_window": 262144, "max_tokens": 32768},
         ],
     },
     "custom": {

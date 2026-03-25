@@ -992,6 +992,11 @@ class OpenClawGateway:
                             pass
                     telegram_allowed = settings_row.telegram_allowed_user_ids
 
+            # Kimi Code (Advanced) requires manual OpenClaw setup — skip sync
+            if provider == "kimi_code":
+                logger.info("Kimi Code provider requires manual OpenClaw setup. Run 'openclaw onboard' in the gateway container.")
+                return
+
             # Determine API type and key env name from provider
             from app.services.model_providers import get_provider_config
             provider_config = get_provider_config(provider)
@@ -1005,7 +1010,6 @@ class OpenClawGateway:
                 "openai": "OPENAI_API_KEY",
                 "anthropic": "ANTHROPIC_API_KEY",
                 "nvidia": "NVIDIA_API_KEY",
-                "kimi_code": "KIMI_API_KEY",
                 "custom": "CUSTOM_API_KEY",
             }
             api_key_env = key_env_map.get(provider, "CUSTOM_API_KEY")
