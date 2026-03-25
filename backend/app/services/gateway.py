@@ -1038,6 +1038,34 @@ class OpenClawGateway:
                 config["agents"]["defaults"] = {}
             config["agents"]["defaults"]["model"] = {"primary": f"{provider}/{model_name}"}
 
+            # Ensure gateway section exists (OpenClaw requires gateway.mode=local)
+            if "gateway" not in config:
+                gateway_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
+                config["gateway"] = {
+                    "mode": "local",
+                    "port": int(os.environ.get("GATEWAY_PORT", "18789")),
+                    "bind": "lan",
+                    "controlUi": {
+                        "dangerouslyAllowHostHeaderOriginFallback": True,
+                    },
+                    "auth": {
+                        "mode": "token",
+                        "token": gateway_token,
+                    },
+                }
+
+            # Ensure tools section exists
+            if "tools" not in config:
+                config["tools"] = {
+                    "profile": "full",
+                    "allow": ["*"],
+                    "exec": {
+                        "host": "gateway",
+                        "security": "full",
+                        "ask": "off",
+                    },
+                }
+
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
 
