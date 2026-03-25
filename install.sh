@@ -303,7 +303,7 @@ setup_helix() {
 
     # Determine domain/URL
     if [ -z "$DOMAIN" ]; then
-        DOMAIN=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+        DOMAIN=$(curl -s4 ifconfig.me 2>/dev/null || hostname -I | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\./) {print $i; exit}}')
     fi
 
     # Create .env from template
