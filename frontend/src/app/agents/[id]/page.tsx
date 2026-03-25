@@ -53,6 +53,7 @@ import {
   Puzzle,
   X,
   Upload,
+  Pencil,
   Plug,
   Trash2,
 } from "lucide-react";
@@ -669,6 +670,11 @@ export default function AgentDetailPage() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyPages, setHistoryPages] = useState(0);
 
+  // Name editing
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [savingName, setSavingName] = useState(false);
+
   // System prompt editing
   const [editPrompt, setEditPrompt] = useState("");
   const [savingPrompt, setSavingPrompt] = useState(false);
@@ -893,7 +899,57 @@ export default function AgentDetailPage() {
             />
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-3xl font-bold tracking-tight">{agent.name}</h1>
+            {editingName ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const trimmed = editName.trim();
+                  if (!trimmed || trimmed === agent.name) {
+                    setEditingName(false);
+                    return;
+                  }
+                  setSavingName(true);
+                  try {
+                    const updated = await api.updateAgent(agent.id, { name: trimmed } as Partial<Agent>);
+                    setAgent(updated);
+                    setEditingName(false);
+                    toast.success("Agent renamed");
+                  } catch (err: unknown) {
+                    toast.error(err instanceof Error ? err.message : "Failed to rename agent");
+                  } finally {
+                    setSavingName(false);
+                  }
+                }}
+              >
+                <Input
+                  autoFocus
+                  className="text-2xl font-bold h-auto py-1"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  disabled={savingName}
+                />
+                <Button type="submit" size="sm" disabled={savingName || !editName.trim()}>
+                  {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setEditingName(false)} disabled={savingName}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </form>
+            ) : (
+              <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+                {agent.name}
+                {isAdmin && (
+                  <button
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => { setEditName(agent.name); setEditingName(true); }}
+                    title="Rename agent"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+              </h1>
+            )}
             <p className="text-muted-foreground">
               {agent.role_title} · {department?.name || ""}
             </p>

@@ -241,6 +241,16 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### March 25, 2026 — Allow agent rename in edit form
+
+**Problem:** Backend PATCH `/api/agents/{id}` already supports name changes but the frontend agent detail page (`app/agents/[id]/page.tsx`) displayed the name as static text with no way to edit it.
+
+**Fix — `frontend/src/app/agents/[id]/page.tsx`:**
+- Added inline-editable name: admin users see a pencil icon next to the agent name
+- Clicking pencil opens an input field pre-filled with current name, with save/cancel buttons
+- Submits via `api.updateAgent()` PATCH call; shows backend validation errors (e.g. duplicate name)
+- Non-admin users see the name as read-only (no pencil icon)
+
 ### March 25, 2026 — Moonshot as default Kimi provider, Kimi Code as advanced option
 
 **Problem:** `kimi_code` provider uses OpenClaw's built-in kimi-coding provider with credentials in OpenClaw's credential store (set up via `openclaw onboard`). This can't be automated by `sync_model_config_from_db()`. Fresh installs need a provider that works automatically.
