@@ -188,8 +188,11 @@ async def create_task(
     await db.commit()
     await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
 
-    await _maybe_auto_dispatch(task, db, user)
-    await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
+    try:
+        await _maybe_auto_dispatch(task, db, user)
+        await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
+    except Exception as dispatch_err:
+        logger.warning("Auto-dispatch failed for task %d, task saved as todo: %s", task.id, dispatch_err)
 
     return TaskOut.model_validate(task)
 
@@ -489,6 +492,18 @@ async def _maybe_auto_dispatch(task: Task, db: AsyncSession, user: User):
     try:
         await gateway.dispatch_task(task, agent)
         logger.info("Auto-dispatched task %d to agent %s", task.id, agent.name)
+    except ValueError:
+        # Agent not registered in gateway — try on-demand registration then retry
+        logger.warning("Agent '%s' not in gateway, attempting on-demand registration", agent.name)
+        try:
+            await gateway._register_single_agent(agent.name, agent.system_prompt)
+            await gateway.dispatch_task(task, agent)
+            logger.info("Auto-dispatched task %d to agent %s after on-demand registration", task.id, agent.name)
+        except Exception:
+            task.status = "todo"
+            agent.status = "online"
+            await db.commit()
+            raise
     except ConnectionError:
         task.status = "todo"
         agent.status = "online"

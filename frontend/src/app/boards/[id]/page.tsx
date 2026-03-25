@@ -371,6 +371,7 @@ export default function BoardPage() {
   const [newDesc, setNewDesc] = useState("");
   const [newPriority, setNewPriority] = useState("medium");
   const [newAgent, setNewAgent] = useState<string>("");
+  const [creating, setCreating] = useState(false);
   const [newDueDate, setNewDueDate] = useState("");
   const [newTags, setNewTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
@@ -457,24 +458,32 @@ export default function BoardPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await api.createTask({
-      title: newTitle,
-      description: newDesc || undefined,
-      priority: newPriority,
-      board_id: boardId,
-      assigned_agent_id: newAgent ? Number(newAgent) : undefined,
-      due_date: newDueDate || undefined,
-      tags: newTags.length > 0 ? newTags : undefined,
-    });
-    setNewTitle("");
-    setNewDesc("");
-    setNewPriority("medium");
-    setNewAgent("");
-    setNewDueDate("");
-    setNewTags([]);
-    setNewTagInput("");
-    setCreateOpen(false);
-    loadData();
+    if (creating) return;
+    setCreating(true);
+    try {
+      await api.createTask({
+        title: newTitle,
+        description: newDesc || undefined,
+        priority: newPriority,
+        board_id: boardId,
+        assigned_agent_id: newAgent ? Number(newAgent) : undefined,
+        due_date: newDueDate || undefined,
+        tags: newTags.length > 0 ? newTags : undefined,
+      });
+      setNewTitle("");
+      setNewDesc("");
+      setNewPriority("medium");
+      setNewAgent("");
+      setNewDueDate("");
+      setNewTags([]);
+      setNewTagInput("");
+      setCreateOpen(false);
+      loadData();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to create task");
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleStatusChange = async (taskId: number, newStatus: string) => {
@@ -786,7 +795,9 @@ export default function BoardPage() {
                   className="h-8 text-sm"
                 />
               </div>
-              <Button type="submit" className="w-full">Create</Button>
+              <Button type="submit" className="w-full" disabled={creating || !newTitle.trim()}>
+                {creating ? "Creating..." : "Create"}
+              </Button>
             </form>
           </DialogContent>
         </Dialog>

@@ -241,6 +241,20 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### March 25, 2026 — Fix task creation crash on gateway dispatch failure
+
+**Problem:** Creating a task assigned to an agent would save the task to DB, then call `_maybe_auto_dispatch()`. If the agent wasn't registered in the gateway, `dispatch_task()` raised `ValueError` which bubbled up as a 500 error. The task was already committed but the frontend got an error, so users clicked Create again causing duplicates.
+
+**Backend — `routers/tasks.py`:**
+- `create_task` endpoint: wrapped `_maybe_auto_dispatch()` call in try/except — on failure, logs warning and still returns the created task with 201 status (task stays in "todo" status)
+- `_maybe_auto_dispatch()`: on `ValueError` (agent not in gateway), attempts on-demand registration via `gateway._register_single_agent()` then retries dispatch once. If retry fails, resets task/agent status and raises (caught by endpoint's try/except)
+
+**Frontend — `app/boards/[id]/page.tsx`:**
+- Added `creating` loading state to task creation form — button shows "Creating..." and is disabled during submission, preventing duplicate clicks
+- Added try/catch with error alert on failure
+
+**Note:** Dashboard task creation modal (`app/dashboard/page.tsx`) already had this loading pattern.
+
 ### March 25, 2026 — Department & Board CRUD
 
 **Backend changes:**
