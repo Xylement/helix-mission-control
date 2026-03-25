@@ -3,21 +3,41 @@ set -e
 
 echo "=== HELIX Gateway Container Starting ==="
 
-# If no API key is configured, wait until one is provided (e.g. after onboarding)
-if [ -z "${MODEL_API_KEY}" ]; then
-    echo "============================================"
-    echo "  No AI model key configured."
-    echo "  Gateway will start after onboarding."
-    echo "  Waiting for MODEL_API_KEY to be set..."
-    echo "============================================"
-    while true; do
-        sleep 30
-    done
-fi
-
 # Generate openclaw.json from environment variables
 CONFIG_DIR="/home/openclaw/.openclaw"
 CONFIG_FILE="$CONFIG_DIR/openclaw.json"
+
+# Check if openclaw.json already has an API key (written by backend from DB)
+config_has_key() {
+    [ -f "$CONFIG_FILE" ] && node -e "
+        const c = require('$CONFIG_FILE');
+        const env = c.env || {};
+        const hasKey = Object.values(env).some(v => typeof v === 'string' && v.length > 8 && !v.startsWith('\${'));
+        process.exit(hasKey ? 0 : 1);
+    " 2>/dev/null
+}
+
+# If no API key in env, poll config file until backend writes one (after onboarding)
+if [ -z "${MODEL_API_KEY}" ]; then
+    if config_has_key; then
+        echo "Found API key in config file, proceeding..."
+        GENERATE_CONFIG="false"
+    else
+        echo "============================================"
+        echo "  No AI model key configured."
+        echo "  Gateway will start after onboarding."
+        echo "  Polling config every 5s..."
+        echo "============================================"
+        while true; do
+            sleep 5
+            if config_has_key; then
+                echo "API key detected in config file! Starting gateway..."
+                GENERATE_CONFIG="false"
+                break
+            fi
+        done
+    fi
+fi
 
 # Determine provider config
 case "${MODEL_PROVIDER:-moonshot}" in

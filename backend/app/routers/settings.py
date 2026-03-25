@@ -129,6 +129,13 @@ async def update_model_config(
     except Exception as e:
         logger.error("Gateway sync failed: %s", e)
 
+    # Also write to openclaw.json (for fresh installs without .env model config)
+    try:
+        from app.services.gateway import gateway
+        await gateway.sync_model_config_from_db()
+    except Exception as e:
+        logger.error("Gateway config file sync failed: %s", e)
+
     api_key_masked = None
     if settings.model_api_key_encrypted:
         try:
