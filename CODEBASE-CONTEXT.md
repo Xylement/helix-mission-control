@@ -423,3 +423,12 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **Frontend:**
 - `components/onboarding/ai-model-step.tsx` — Dynamic API key placeholder from provider config. Added Kimi Code help link to kimi.com/code/console.
 - `app/settings/model-config/page.tsx` — Added Kimi Code help link for API key.
+
+### March 25, 2026 — Fresh Install Fixes (openclaw chown, openclaw.json mount, IPv4)
+
+**install.sh:**
+- `.openclaw` directory `chown` changed from `$HELIX_USER:$HELIX_USER` to `1001:1001` — matches the gateway container's `openclaw` user UID, not the host `helix` user.
+- IP detection for "Access URL" changed from `curl -s ifconfig.me` to `curl -s4 ifconfig.me` to force IPv4. `hostname -I` fallback now scans for the first dotted-quad address instead of blindly taking the first field (which could be IPv6).
+
+**docker-compose.yml:**
+- Backend `openclaw.json` volume mount changed from `:ro` to `:rw` — `sync_model_config_from_db()` needs write access on fresh installs where `MODEL_API_KEY` env is empty.
