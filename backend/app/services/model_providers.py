@@ -44,8 +44,8 @@ PROVIDERS = {
     },
     "kimi_code": {
         "name": "Kimi Code",
-        "base_url": "https://api.kimi.com/coding/v1",
-        "api_type": "openai-completions",
+        "base_url": "https://api.kimi.com/coding/",
+        "api_type": "anthropic-messages",
         "key_prefix": "sk-kimi-",
         "default_model": "kimi-for-coding",
         "models": [

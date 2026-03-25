@@ -67,9 +67,9 @@ case "${MODEL_PROVIDER:-moonshot}" in
     API_TYPE="anthropic-messages"
     ;;
   kimi_code)
-    BASE_URL="${MODEL_BASE_URL:-https://api.kimi.com/coding/v1}"
+    BASE_URL="${MODEL_BASE_URL:-https://api.kimi.com/coding/}"
     API_KEY_ENV="KIMI_API_KEY"
-    API_TYPE="openai-completions"
+    API_TYPE="anthropic-messages"
     ;;
   custom)
     BASE_URL="${MODEL_BASE_URL}"
