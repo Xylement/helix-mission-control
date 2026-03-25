@@ -981,6 +981,17 @@ class OpenClawGateway:
                 context_window = settings_row.model_context_window or 256000
                 max_tokens = settings_row.model_max_tokens or 8192
 
+                # Read Telegram config from DB (only if env var not set)
+                telegram_token = None
+                telegram_allowed = None
+                if not os.environ.get("TELEGRAM_BOT_TOKEN"):
+                    if settings_row.telegram_bot_token_encrypted:
+                        try:
+                            telegram_token = decrypt_value(settings_row.telegram_bot_token_encrypted)
+                        except Exception:
+                            pass
+                    telegram_allowed = settings_row.telegram_allowed_user_ids
+
             # Determine API type and key env name from provider
             from app.services.model_providers import get_provider_config
             provider_config = get_provider_config(provider)
@@ -1068,6 +1079,20 @@ class OpenClawGateway:
                         "security": "full",
                         "ask": "off",
                     },
+                }
+
+            # Sync Telegram channel config from DB if env var not set
+            if telegram_token:
+                allowed_ids = []
+                if telegram_allowed:
+                    allowed_ids = [uid.strip() for uid in telegram_allowed.split(",") if uid.strip()]
+                config["channels"] = {
+                    "telegram": {
+                        "enabled": True,
+                        "botToken": telegram_token,
+                        "dmPolicy": "allowlist",
+                        "allowFrom": allowed_ids,
+                    }
                 }
 
             with open(config_path, "w") as f:
