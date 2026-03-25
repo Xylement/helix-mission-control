@@ -1020,6 +1020,16 @@ class OpenClawGateway:
                 except (json.JSONDecodeError, Exception):
                     config = {}
 
+            # Guard: skip sync if this is an existing installation (has auth profiles
+            # or registered agents). Only sync on fresh installs with minimal config.
+            if config.get("auth"):
+                logger.info("openclaw.json has auth profiles — skipping DB config sync (existing install)")
+                return
+            agents_list = config.get("agents", {}).get("list", [])
+            if isinstance(agents_list, list) and len(agents_list) > 0:
+                logger.info("openclaw.json has %d registered agents — skipping DB config sync (existing install)", len(agents_list))
+                return
+
             # Update env section with API key
             if "env" not in config:
                 config["env"] = {}
