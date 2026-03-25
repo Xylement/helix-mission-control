@@ -473,3 +473,12 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Skipped if `TELEGRAM_BOT_TOKEN` env var is set (backward compat with GALADO).
 
 **Kimi Code in Settings > AI Model:** Already works — the page loads providers dynamically from `GET /api/settings/model/providers` which returns all `PROVIDERS` including `kimi_code`. Requires `docker compose up -d --build` to pick up backend changes.
+
+### March 25, 2026 — sync_model_config_from_db Guard for Existing Installs
+
+**Problem:** `sync_model_config_from_db()` overwrote GALADO's full `openclaw.json` (agent list, auth profiles, wizard config) because the `MODEL_API_KEY` env check alone wasn't sufficient — GALADO's env var was empty but its config file was fully populated by the entrypoint.
+
+**backend/app/services/gateway.py — `sync_model_config_from_db()`:**
+- Added guard after loading `openclaw.json`: if the config has an `"auth"` key or `"agents.list"` array with entries, the sync is skipped entirely and logs the reason.
+- Only proceeds on fresh installs where the config is minimal (empty `{}` or just gateway/tools scaffolding).
+- Three-layer protection: (1) `MODEL_API_KEY` env set → skip, (2) config has auth profiles → skip, (3) config has registered agents → skip.
