@@ -432,3 +432,21 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 
 **docker-compose.yml:**
 - Backend `openclaw.json` volume mount changed from `:ro` to `:rw` — `sync_model_config_from_db()` needs write access on fresh installs where `MODEL_API_KEY` env is empty.
+
+### March 25, 2026 — Gateway Startup Fixes (polling, config sections, onboarding sync)
+
+**gateway/entrypoint.sh:**
+- Replaced infinite `sleep 30` block with polling loop: when `MODEL_API_KEY` env is empty, checks `openclaw.json` every 5s for a valid API key using `config_has_key()` (node script that inspects env values). Starts gateway as soon as key is detected.
+- If config already has a key on startup, proceeds immediately without waiting.
+
+**backend/app/services/gateway.py — `sync_model_config_from_db()`:**
+- Now includes `gateway` section (`mode: "local"`, port, auth token from `OPENCLAW_GATEWAY_TOKEN` env) and `tools` section if not already present in openclaw.json. OpenClaw requires `gateway.mode=local` to start.
+- Merges into existing config — preserves gateway/tools sections if already present (e.g. GALADO).
+
+**backend/app/routers/onboarding.py:**
+- Step 3 (AI model config) now calls `gateway.sync_model_config_from_db()` after saving, so the key is written to openclaw.json immediately for the gateway to detect.
+
+**backend/app/routers/settings.py:**
+- Model config update (`PUT /settings/model`) also calls `gateway.sync_model_config_from_db()` in addition to the existing .env + container restart flow.
+
+**Fresh install flow:** User completes onboarding step 3 → API key saved to DB → backend writes full config to openclaw.json (env, models, agents, gateway, tools) → gateway detects key within 5s → gateway starts.
