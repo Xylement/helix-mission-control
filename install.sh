@@ -385,7 +385,7 @@ ENVFILE
 
     # Set ownership
     chown -R "$HELIX_USER:$HELIX_USER" "$INSTALL_DIR"
-    chown -R "$HELIX_USER:$HELIX_USER" /home/$HELIX_USER/.openclaw
+    chown -R 1001:1001 /home/$HELIX_USER/.openclaw
 
     # Select Caddyfile
     if [ "$SKIP_PROXY" != "true" ]; then

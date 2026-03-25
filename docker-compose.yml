@@ -103,7 +103,7 @@ services:
       - LICENSE_KEY=${LICENSE_KEY:-}
     volumes:
       - /home/helix/.openclaw/workspaces:/home/helix/.openclaw/workspaces
-      - /home/helix/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:ro
+      - /home/helix/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:rw
       - /home/helix/.openclaw/identity:/home/helix/.openclaw/identity:ro
       - uploads-data:/data/uploads
     healthcheck:
