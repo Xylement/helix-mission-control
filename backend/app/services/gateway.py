@@ -308,6 +308,10 @@ class OpenClawGateway:
         # Create workspace and SOUL.md if needed
         try:
             os.makedirs(workspace_dir, exist_ok=True)
+            try:
+                os.chown(workspace_dir, 1001, 1001)
+            except OSError:
+                pass
             soul_path = os.path.join(workspace_dir, "SOUL.md")
             if not os.path.exists(soul_path):
                 from app.routers.agents import sync_soul_md

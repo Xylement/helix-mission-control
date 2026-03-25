@@ -433,6 +433,10 @@ start_helix() {
     log "Running database migrations..."
     sudo -u "$HELIX_USER" docker compose exec -T backend alembic upgrade head || true
 
+    # Fix workspace ownership — backend creates dirs as root, gateway runs as UID 1001
+    log "Fixing openclaw workspace permissions..."
+    chown -R 1001:1001 /home/$HELIX_USER/.openclaw
+
     success "HELIX Mission Control is running"
 }
 

@@ -66,6 +66,7 @@ async def sync_soul_md(agent_name: str, system_prompt: str):
             if loop_marker in content:
                 learning_loop = content[content.index(loop_marker):]
 
+    created = not os.path.exists(workspace_dir)
     os.makedirs(workspace_dir, exist_ok=True)
     with open(soul_path, 'w') as f:
         f.write(f"# Agent Identity\n\n{system_prompt}\n\n---\n\n")
@@ -73,6 +74,13 @@ async def sync_soul_md(agent_name: str, system_prompt: str):
             f.write(learning_loop)
         else:
             f.write(DEFAULT_LEARNING_LOOP)
+
+    # Set ownership to UID 1001 (openclaw user in gateway container)
+    try:
+        os.chown(workspace_dir, 1001, 1001)
+        os.chown(soul_path, 1001, 1001)
+    except OSError:
+        pass  # May not have permission (non-root); install script fixes this
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
