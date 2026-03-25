@@ -450,3 +450,15 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Model config update (`PUT /settings/model`) also calls `gateway.sync_model_config_from_db()` in addition to the existing .env + container restart flow.
 
 **Fresh install flow:** User completes onboarding step 3 → API key saved to DB → backend writes full config to openclaw.json (env, models, agents, gateway, tools) → gateway detects key within 5s → gateway starts.
+
+### March 25, 2026 — Kimi Code API Format Fix
+
+**Problem:** Kimi Code API returned 403 "only available for Coding Agents" because the wrong API format was configured. Kimi Code requires `anthropic-messages`, not `openai-completions`.
+
+**backend/app/services/model_providers.py:**
+- `kimi_code` provider: `api_type` changed from `"openai-completions"` to `"anthropic-messages"`, `base_url` corrected to `https://api.kimi.com/coding/` (trailing slash, no `/v1`).
+
+**gateway/entrypoint.sh:**
+- `kimi_code` case: `API_TYPE` changed to `"anthropic-messages"`, `BASE_URL` corrected to match.
+
+**No change needed in gateway.py** — `sync_model_config_from_db()` reads `api_type` from `get_provider_config()` automatically.
