@@ -462,3 +462,14 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `kimi_code` case: `API_TYPE` changed to `"anthropic-messages"`, `BASE_URL` corrected to match.
 
 **No change needed in gateway.py** — `sync_model_config_from_db()` reads `api_type` from `get_provider_config()` automatically.
+
+### March 25, 2026 — Telegram Config Sync from DB to Gateway
+
+**Problem:** Users configure Telegram through the dashboard (saved to `organization_settings` in DB), but the gateway only read `TELEGRAM_BOT_TOKEN` from `.env`. Fresh installs with Telegram configured via onboarding/settings had no Telegram channel in `openclaw.json`.
+
+**backend/app/services/gateway.py — `sync_model_config_from_db()`:**
+- Now reads `telegram_bot_token_encrypted` and `telegram_allowed_user_ids` from `organization_settings`.
+- Decrypts bot token using Fernet and writes `channels.telegram` section to `openclaw.json` with `enabled`, `botToken`, `dmPolicy: "allowlist"`, and `allowFrom` (parsed from comma-separated user IDs).
+- Skipped if `TELEGRAM_BOT_TOKEN` env var is set (backward compat with GALADO).
+
+**Kimi Code in Settings > AI Model:** Already works — the page loads providers dynamically from `GET /api/settings/model/providers` which returns all `PROVIDERS` including `kimi_code`. Requires `docker compose up -d --build` to pick up backend changes.
