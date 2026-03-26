@@ -20,9 +20,12 @@ PROVIDERS = {
         "key_prefix": "sk-",
         "default_model": "gpt-4o",
         "models": [
+            {"id": "gpt-5.4", "name": "GPT-5.4", "context_window": 256000, "max_tokens": 32768},
+            {"id": "gpt-5.4-mini", "name": "GPT-5.4 Mini", "context_window": 256000, "max_tokens": 32768},
+            {"id": "gpt-5.4-nano", "name": "GPT-5.4 Nano", "context_window": 128000, "max_tokens": 16384},
+            {"id": "gpt-5.2", "name": "GPT-5.2", "context_window": 256000, "max_tokens": 32768},
             {"id": "gpt-4o", "name": "GPT-4o", "context_window": 128000, "max_tokens": 16384},
             {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "context_window": 128000, "max_tokens": 16384},
-            {"id": "o1", "name": "o1", "context_window": 200000, "max_tokens": 100000},
         ],
     },
     "anthropic": {

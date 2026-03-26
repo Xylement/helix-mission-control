@@ -241,6 +241,17 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### March 26, 2026 — Update OpenAI provider models to GPT-5.x series
+
+**Problem:** OpenAI provider model list only included gpt-4o, gpt-4o-mini, and o1 — missing the entire GPT-5.x series.
+
+**backend/app/services/model_providers.py:**
+- OpenAI `models` list updated to: gpt-5.4 (256k/32k), gpt-5.4-mini (256k/32k), gpt-5.4-nano (128k/16k), gpt-5.2 (256k/32k), gpt-4o (128k/16k), gpt-4o-mini (128k/16k). Removed o1.
+- `default_model` remains `gpt-4o` (cheapest reliable option for default).
+
+**frontend/src/app/settings/models/page.tsx:**
+- `PROVIDER_SUGGESTIONS` for openai updated to match: `["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-4o", "gpt-4o-mini"]`. Removed outdated gpt-4-turbo and gpt-3.5-turbo.
+
 ### March 26, 2026 — Strengthen sync_model_config_from_db guard
 
 **Problem:** `sync_model_config_from_db()` overwrote GALADO's working `openclaw.json` despite existing guards (auth key, agents.list). The existing `models.providers` section with a valid kimi-coding/k2p5 config was replaced by moonshot/kimi-k2.5 with an invalid API key from the DB.
