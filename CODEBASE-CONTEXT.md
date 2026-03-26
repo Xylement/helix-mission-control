@@ -241,6 +241,16 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### March 26, 2026 — Strengthen sync_model_config_from_db guard
+
+**Problem:** `sync_model_config_from_db()` overwrote GALADO's working `openclaw.json` despite existing guards (auth key, agents.list). The existing `models.providers` section with a valid kimi-coding/k2p5 config was replaced by moonshot/kimi-k2.5 with an invalid API key from the DB.
+
+**Backend — `services/gateway.py` — `sync_model_config_from_db()`:**
+- Added `GENERATE_CONFIG=false` env var kill-switch — skips sync entirely (GALADO already has this in `.env`)
+- Added `models.providers` guard — if openclaw.json has any providers configured, skip sync
+- Existing guards preserved: `MODEL_API_KEY` env var, `auth` key, `agents.list` entries
+- Sync now only runs on truly fresh installs with empty/minimal openclaw.json
+
 ### March 25, 2026 — Allow agent rename in edit form
 
 **Problem:** Backend PATCH `/api/agents/{id}` already supports name changes but the frontend agent detail page (`app/agents/[id]/page.tsx`) displayed the name as static text with no way to edit it.

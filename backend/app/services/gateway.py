@@ -959,6 +959,12 @@ class OpenClawGateway:
         """If MODEL_API_KEY env var is empty, read model config from org_settings
         and write it to the openclaw.json config file for the gateway."""
         import os
+
+        # Hard kill-switch: GENERATE_CONFIG=false skips sync entirely
+        if os.environ.get("GENERATE_CONFIG", "").lower() == "false":
+            logger.info("GENERATE_CONFIG=false — skipping config sync")
+            return
+
         if os.environ.get("MODEL_API_KEY"):
             logger.info("MODEL_API_KEY set in env — skipping DB model config sync")
             return
@@ -1024,14 +1030,19 @@ class OpenClawGateway:
                 except (json.JSONDecodeError, Exception):
                     config = {}
 
-            # Guard: skip sync if this is an existing installation (has auth profiles
-            # or registered agents). Only sync on fresh installs with minimal config.
+            # Guard: skip sync if this is an existing installation (has auth profiles,
+            # registered agents, or manually configured providers).
+            # Only sync on fresh installs with minimal config.
             if config.get("auth"):
                 logger.info("openclaw.json has auth profiles — skipping DB config sync (existing install)")
                 return
             agents_list = config.get("agents", {}).get("list", [])
             if isinstance(agents_list, list) and len(agents_list) > 0:
                 logger.info("openclaw.json has %d registered agents — skipping DB config sync (existing install)", len(agents_list))
+                return
+            providers = config.get("models", {}).get("providers", {})
+            if isinstance(providers, dict) and len(providers) > 0:
+                logger.info("openclaw.json has %d model providers — skipping DB config sync (existing install)", len(providers))
                 return
 
             # Update env section with API key
