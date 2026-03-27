@@ -683,3 +683,17 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 
 **docker-compose.yml:**
 - Removed `version: "3.9"` line — Docker Compose v2 doesn't need it and it generates a deprecation warning
+
+### March 27, 2026 — Landing Page & Docs: macOS Install Command
+
+**landing/index.html** (new file in repo, deployed to /var/www/helixnode.tech/):
+- Install command section now has pill-style tab switcher: "Linux / VPS" (default) and "macOS"
+- Linux tab: `curl -fsSL https://helixnode.tech/install.sh | sudo bash`
+- macOS tab: `curl -fsSL https://helixnode.tech/install.sh | bash` (no sudo)
+- Copy-to-clipboard copies whichever command is currently active
+- Tabs use `.install-tabs` / `.install-tab` CSS, matching existing dark theme
+
+**Docs updates (~/helixnode-docs/):**
+- `getting-started/installation.md` — Split install command into Linux and macOS sections with headers
+- `getting-started/beta-quickstart.md` — Added macOS as "Option B" in requirements, dual install commands
+- `getting-started/requirements.md` — Complete rewrite: supported OS table (Ubuntu 20/22/24, Debian 11/12, macOS 12+), separate Linux vs macOS requirement tables, macOS differences callout
