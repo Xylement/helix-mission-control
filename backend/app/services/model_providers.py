@@ -8,9 +8,11 @@ PROVIDERS = {
         "help_url": "https://platform.moonshot.ai/console/api-keys",
         "models": [
             {"id": "kimi-k2.5", "name": "Kimi K2.5", "context_window": 256000, "max_tokens": 8192},
-            {"id": "kimi-k2", "name": "Kimi K2", "context_window": 256000, "max_tokens": 8192},
-            {"id": "kimi-k2-thinking", "name": "Kimi K2 Thinking", "context_window": 256000, "max_tokens": 8192},
+            {"id": "kimi-k2-0905-preview", "name": "Kimi K2 0905 Preview", "context_window": 256000, "max_tokens": 8192},
             {"id": "kimi-k2-turbo-preview", "name": "Kimi K2 Turbo Preview", "context_window": 256000, "max_tokens": 8192},
+            {"id": "kimi-k2-0711-preview", "name": "Kimi K2 0711 Preview", "context_window": 128000, "max_tokens": 8192},
+            {"id": "kimi-k2-thinking", "name": "Kimi K2 Thinking", "context_window": 256000, "max_tokens": 16000},
+            {"id": "kimi-k2-thinking-turbo", "name": "Kimi K2 Thinking Turbo", "context_window": 256000, "max_tokens": 16000},
         ],
     },
     "openai": {
@@ -33,10 +35,13 @@ PROVIDERS = {
         "base_url": "https://api.anthropic.com/v1",
         "api_type": "anthropic",
         "key_prefix": "sk-ant-",
-        "default_model": "claude-sonnet-4-20250514",
+        "default_model": "claude-sonnet-4-6-20250217",
         "models": [
-            {"id": "claude-sonnet-4-20250514", "name": "Claude Sonnet 4", "context_window": 200000, "max_tokens": 8192},
-            {"id": "claude-opus-4-20250514", "name": "Claude Opus 4", "context_window": 200000, "max_tokens": 8192},
+            {"id": "claude-opus-4-6-20250205", "name": "Claude Opus 4.6", "context_window": 200000, "max_tokens": 16384},
+            {"id": "claude-sonnet-4-6-20250217", "name": "Claude Sonnet 4.6", "context_window": 200000, "max_tokens": 16384},
+            {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "context_window": 200000, "max_tokens": 8192},
+            {"id": "claude-sonnet-4-5-20250514", "name": "Claude Sonnet 4.5", "context_window": 200000, "max_tokens": 16384},
+            {"id": "claude-opus-4-5-20251124", "name": "Claude Opus 4.5", "context_window": 200000, "max_tokens": 16384},
         ],
     },
     "nvidia": {

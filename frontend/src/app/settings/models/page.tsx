@@ -62,9 +62,9 @@ const PROVIDER_COLORS: Record<string, string> = {
 };
 
 const PROVIDER_SUGGESTIONS: Record<string, string[]> = {
-  moonshot: ["kimi-k2.5", "kimi-k2", "kimi-k2-thinking", "kimi-k2-turbo-preview"],
+  moonshot: ["kimi-k2.5", "kimi-k2-0905-preview", "kimi-k2-turbo-preview", "kimi-k2-0711-preview", "kimi-k2-thinking", "kimi-k2-thinking-turbo"],
   openai: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-4o", "gpt-4o-mini"],
-  anthropic: ["claude-sonnet-4-20250514", "claude-haiku-4-20250414", "claude-opus-4-20250514"],
+  anthropic: ["claude-opus-4-6-20250205", "claude-sonnet-4-6-20250217", "claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250514", "claude-opus-4-5-20251124"],
   nvidia: ["meta/llama-3.1-405b-instruct", "meta/llama-3.1-70b-instruct", "mistralai/mixtral-8x22b-instruct-v0.1"],
   kimi_code: ["k2p5"],
   custom: [],

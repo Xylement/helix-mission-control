@@ -697,3 +697,20 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `getting-started/installation.md` — Split install command into Linux and macOS sections with headers
 - `getting-started/beta-quickstart.md` — Added macOS as "Option B" in requirements, dual install commands
 - `getting-started/requirements.md` — Complete rewrite: supported OS table (Ubuntu 20/22/24, Debian 11/12, macOS 12+), separate Linux vs macOS requirement tables, macOS differences callout
+
+### March 27, 2026 — Update Model Provider Lists to Current 2026 Lineups
+
+**Problem:** Settings > Models page showed outdated model suggestions — Moonshot still listed deprecated moonshot-v1-* models, Anthropic still listed retired Claude 3.x models.
+
+**backend/app/services/model_providers.py:**
+- Moonshot models updated: kimi-k2.5 (flagship), kimi-k2-0905-preview (enhanced coding), kimi-k2-turbo-preview (fast), kimi-k2-0711-preview (original K2), kimi-k2-thinking (reasoning), kimi-k2-thinking-turbo (fast reasoning). Removed moonshot-v1-8k/32k/128k (deprecated).
+- Anthropic models updated: claude-opus-4-6-20250205, claude-sonnet-4-6-20250217 (new default), claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514, claude-opus-4-5-20251124. Removed retired claude-3.x models.
+- OpenAI models verified current (gpt-5.4 series, already updated).
+
+**frontend/src/app/settings/models/page.tsx:**
+- PROVIDER_SUGGESTIONS updated for moonshot, anthropic, openai to match backend.
+
+**frontend/src/components/onboarding/ai-model-step.tsx:**
+- No changes needed — fetches provider data from backend API dynamically.
+
+**Display-only change** — no impact on running agents, gateway, or API routing.
