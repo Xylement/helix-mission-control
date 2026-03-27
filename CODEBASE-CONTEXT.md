@@ -650,3 +650,20 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **Update flow:** Admin clicks "Update Now" in Settings > System → enters password → backend writes `data/.update-trigger` → host daemon detects trigger → git pull → docker compose up --build → wait 90s → health check → success or auto-rollback → writes result to `data/.update-result` → frontend polls `/api/version` every 15s and shows result.
 
 **Systemd service:** `helix-updater.service` — runs `update-daemon.sh` as root, auto-restarts.
+
+### March 27, 2026 — Agent Intelligence Skills Pack (Marketplace)
+
+**Feature:** 4 agent intelligence skills + 1 department pack added to the HelixNode Marketplace. Available to all plans (min_plan: starter). These are prompt-injection skills that shape how agents think, learn, and improve.
+
+**Marketplace templates added (license server DB):**
+1. `hn-learning-loop` (skill) — Agents save rules from corrections and lessons from successes, accumulating knowledge over time
+2. `hn-self-reflection` (skill) — Quality gate before task submission with checklist and confidence signals
+3. `hn-task-context` (skill) — Maintains consistency with previous approved work, cross-agent awareness
+4. `hn-feedback-loop` (skill) — Learns from approval/rejection patterns, trend detection, reviewer adaptation
+5. `hn-agent-intelligence-pack` (department_pack) — Bundle of all 4 skills
+
+**New marketplace category:** `intelligence` — "Intelligence" with 🧠 emoji, "Skills that make agents smarter over time"
+
+**All templates:** is_official=true, is_featured=true, author=helixnode, status=published, min_plan=starter
+
+**No Mission Control code changes** — skills are marketplace-only, installed by customers through the Marketplace page. Installed skills get injected into agent prompts at dispatch time via `resolve_active_skills()`.
