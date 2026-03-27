@@ -1,0 +1,163 @@
+services:
+  staging-db:
+    image: postgres:16
+    container_name: staging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-helix_mc_staging}
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-helix_mc_staging}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - helix-staging-network
+
+  staging-redis:
+    image: redis:7-alpine
+    container_name: staging-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - helix-staging-network
+
+  staging-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: staging-gateway
+    restart: on-failure:5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "18789"
+    environment:
+      - MODEL_PROVIDER=${MODEL_PROVIDER:-kimi_code}
+      - MODEL_NAME=${MODEL_NAME:-k2p5}
+      - MODEL_API_KEY=${MODEL_API_KEY:-}
+      - MODEL_BASE_URL=${MODEL_BASE_URL:-}
+      - MODEL_DISPLAY_NAME=${MODEL_DISPLAY_NAME:-}
+      - MODEL_CONTEXT_WINDOW=${MODEL_CONTEXT_WINDOW:-256000}
+      - MODEL_MAX_TOKENS=${MODEL_MAX_TOKENS:-8192}
+      - GATEWAY_PORT=18789
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS:-}
+      - GENERATE_CONFIG=${GENERATE_CONFIG:-false}
+      - MC_API_BASE=http://staging-backend:8000
+      - MC_SERVICE_TOKEN=${SERVICE_TOKEN:-}
+    volumes:
+      - /home/helix/.openclaw-staging:/home/openclaw/.openclaw
+    networks:
+      - helix-staging-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "const ws = new (require('/usr/local/lib/node_modules/ws'))('ws://localhost:18789'); ws.on('open', () => { ws.close(); process.exit(0); }); ws.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 5000);"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    depends_on:
+      staging-db:
+        condition: service_healthy
+      staging-redis:
+        condition: service_healthy
+
+  staging-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: staging-backend
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8010:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@staging-db:5432/${POSTGRES_DB:-helix_mc_staging}
+      - REDIS_URL=${REDIS_URL:-redis://staging-redis:6379/0}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENVIRONMENT=staging
+      - OPENCLAW_GATEWAY_URL=${GATEWAY_URL:-ws://staging-gateway:18789}
+      - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3100,https://staging.helixnode.tech}
+      - HELIX_SERVICE_TOKEN=${SERVICE_TOKEN:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - GA4_PROPERTY_ID=${GA4_PROPERTY_ID:-}
+      - GSC_SITE_URL=${GSC_SITE_URL:-}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MAX_AGENTS=${MAX_AGENTS:-50}
+      - LICENSE_SERVER_URL=${LICENSE_SERVER_URL:-https://api.helixnode.tech}
+      - LICENSE_KEY=${LICENSE_KEY:-}
+      - GENERATE_CONFIG=${GENERATE_CONFIG:-false}
+      - SEED_DATA=${SEED_DATA:-false}
+    volumes:
+      - /home/helix/.openclaw-staging/workspaces:/home/helix/.openclaw/workspaces
+      - /home/helix/.openclaw-staging/openclaw.json:/home/helix/.openclaw/openclaw.json:rw
+      - /home/helix/.openclaw-staging/identity:/home/helix/.openclaw/identity:ro
+      - staging_uploads_data:/data/uploads
+      - ./backups:/home/helix/backups
+      - ./VERSION:/app/VERSION:ro
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      staging-db:
+        condition: service_healthy
+      staging-redis:
+        condition: service_healthy
+      staging-gateway:
+        condition: service_started
+    networks:
+      - helix-staging-network
+
+  staging-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-https://staging.helixnode.tech}
+    container_name: staging-frontend
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://staging.helixnode.tech/api}
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-https://staging.helixnode.tech}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      - staging-backend
+    networks:
+      - helix-staging-network
+
+volumes:
+  staging_postgres_data:
+  staging_uploads_data:
+  staging_redis_data:
+
+networks:
+  helix-staging-network:
+    driver: bridge
