@@ -6,3 +6,15 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+backups/
+logs/
+
+# Update daemon communication files
+.update-trigger
+.update-result
+.update-history
+.pre-update-commit
+data/.update-trigger
+data/.update-result
+data/.update-history
+data/.pre-update-commit

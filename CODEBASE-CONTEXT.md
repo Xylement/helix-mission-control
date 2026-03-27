@@ -170,6 +170,7 @@
 | Plugin Runtime | services/plugin_runtime.py | Execute capabilities, encrypt credentials |
 | Model Providers | services/model_providers.py | 6-provider registry (moonshot, openai, anthropic, nvidia, kimi_code, custom) |
 | Permissions | services/permissions.py | Board permission checks, filtering (default-closed model) |
+| Version | services/version_service.py | Read VERSION file, check api.helixnode.tech for updates, 6h cache |
 | Encryption | utils/encryption.py | Fernet encrypt/decrypt (JWT_SECRET derived) |
 
 ---
@@ -621,3 +622,31 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **Schema — backups table:** id (UUID PK), org_id (FK organizations), filename, file_path, file_size_bytes (BIGINT), backup_type (auto/manual), status (completed/failed/in_progress), error_message (TEXT nullable), created_at
 
 **Schema — organization_settings additions:** backup_enabled (BOOLEAN DEFAULT false), backup_schedule (VARCHAR DEFAULT 'daily'), backup_time (VARCHAR DEFAULT '02:00'), backup_day (VARCHAR DEFAULT 'monday'), backup_retention_days (INTEGER DEFAULT 7)
+
+### March 27, 2026 — Version System with Update Notifications and One-Click Update
+
+**Feature:** Semantic versioning (v1.0.0), update notifications in sidebar, one-click update from Settings > System with auto-rollback on failure.
+
+**New files — Mission Control:**
+- `VERSION` — Repo root, contains "1.0.0". Committed to git, mounted read-only into backend container.
+- `backend/app/services/version_service.py` — Reads VERSION file, calls `GET api.helixnode.tech/v1/version/latest`, 6h in-memory cache, semver comparison, reads/writes `.update-trigger`/`.update-result`/`.update-history` files in `data/` directory.
+- `backend/app/routers/version.py` — `GET /api/version` (public: current + latest version, update status), `POST /api/version/check` (admin: force re-check), `POST /api/version/update` (admin: trigger update, requires password confirmation, 1-per-hour rate limit), `GET /api/version/history` (admin: last 10 updates).
+- `update-daemon.sh` — Host-level bash script (systemd service). Polls `data/.update-trigger` every 10s. On trigger: git pull, docker compose up --build, wait 90s, health check (3 attempts). Auto-rollback on failure (git checkout saved commit, rebuild, verify health). Writes JSON results to `data/.update-result` and `data/.update-history`.
+- `frontend/src/app/settings/system/page.tsx` — Settings > System page: current/latest version display, check for updates, update now with password confirmation dialog, progress polling every 15s, update history list with status badges.
+
+**New files — License Server (~/helixnode-api):**
+- `app/routes/version.py` — `GET /v1/version/latest` returns `{ version, release_date, changelog_url, min_version, message }` from env vars `LATEST_HELIX_VERSION` and `LATEST_HELIX_RELEASE_DATE`.
+
+**Modified files:**
+- `backend/app/main.py` — Registered version router.
+- `docker-compose.yml` — Added `./VERSION:/app/VERSION:ro` and `./data:/app/data` volume mounts to backend.
+- `.gitignore` — Added `.update-trigger`, `.update-result`, `.update-history`, `.pre-update-commit` and their `data/` equivalents.
+- `install.sh` — Added update daemon setup: creates `data/` dir, installs `helix-updater.service` systemd unit (idempotent).
+- `frontend/src/components/sidebar.tsx` — Added "System" (Monitor icon) to admin nav items. Added version display (v1.0.0) in sidebar footer with blue dot for updates. Added update available banner linking to Settings > System.
+- `frontend/src/lib/api.ts` — Added version API methods (getVersion, checkForUpdates, triggerUpdate, getUpdateHistory) and types (VersionInfo, UpdateTriggerResponse, UpdateHistoryItem).
+- `helixnode-api/app/main.py` — Registered version router.
+- `helixnode-api/docker-compose.yml` — Added `LATEST_HELIX_VERSION` and `LATEST_HELIX_RELEASE_DATE` env vars.
+
+**Update flow:** Admin clicks "Update Now" in Settings > System → enters password → backend writes `data/.update-trigger` → host daemon detects trigger → git pull → docker compose up --build → wait 90s → health check → success or auto-rollback → writes result to `data/.update-result` → frontend polls `/api/version` every 15s and shows result.
+
+**Systemd service:** `helix-updater.service` — runs `update-daemon.sh` as root, auto-restarts.

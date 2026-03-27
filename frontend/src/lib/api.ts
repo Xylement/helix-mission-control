@@ -606,6 +606,13 @@ export const api = {
   updateBackupSettings: (data: Partial<BackupSettings>) =>
     request<BackupSettings>("/backups/settings", { method: "PUT", body: JSON.stringify(data) }),
 
+  // Version
+  getVersion: () => request<VersionInfo>("/version"),
+  checkForUpdates: () => request<VersionInfo>("/version/check", { method: "POST" }),
+  triggerUpdate: (password: string) =>
+    request<UpdateTriggerResponse>("/version/update", { method: "POST", body: JSON.stringify({ password }) }),
+  getUpdateHistory: () => request<{ updates: UpdateHistoryItem[] }>("/version/history"),
+
   // Agent Plugins
   agentPlugins: (agentId: number) =>
     request<AgentPluginItem[]>(`/agents/${agentId}/plugins`),
@@ -1504,4 +1511,30 @@ export interface BackupSettings {
   backup_time: string;
   backup_day: string;
   backup_retention_days: number;
+}
+
+// Version types
+export interface VersionInfo {
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
+  changelog_url: string | null;
+  release_date: string | null;
+  message: string | null;
+  last_update_status: UpdateHistoryItem | null;
+}
+
+export interface UpdateTriggerResponse {
+  status: string;
+  target_version: string;
+  message: string;
+}
+
+export interface UpdateHistoryItem {
+  status: string;
+  version: string;
+  previous_version: string;
+  message?: string;
+  error?: string;
+  timestamp: string;
 }

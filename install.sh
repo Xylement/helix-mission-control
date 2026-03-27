@@ -437,6 +437,35 @@ start_helix() {
     log "Fixing openclaw workspace permissions..."
     chown -R 1001:1001 /home/$HELIX_USER/.openclaw
 
+    # Setup update daemon
+    log "Setting up update daemon..."
+    mkdir -p "${INSTALL_DIR}/data"
+    chown "$HELIX_USER:$HELIX_USER" "${INSTALL_DIR}/data"
+    chmod +x "${INSTALL_DIR}/update-daemon.sh"
+
+    if [ ! -f /etc/systemd/system/helix-updater.service ]; then
+        cat > /etc/systemd/system/helix-updater.service << UPDATER_EOF
+[Unit]
+Description=HELIX Mission Control Updater
+After=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${INSTALL_DIR}/update-daemon.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UPDATER_EOF
+    fi
+
+    systemctl daemon-reload
+    systemctl enable helix-updater 2>/dev/null || true
+    systemctl start helix-updater 2>/dev/null || true
+
     success "HELIX Mission Control is running"
 }
 

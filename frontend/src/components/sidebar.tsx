@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
@@ -31,7 +31,9 @@ import {
   GitBranch,
   Plug,
   HardDrive,
+  Monitor,
 } from "lucide-react";
+import { api, type VersionInfo } from "@/lib/api";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -51,6 +53,7 @@ const adminNavItems = [
   { href: "/settings/plugins", label: "Plugins", icon: Plug },
   { href: "/settings/organization", label: "Organization", icon: Settings2 },
   { href: "/settings/backups", label: "Backups", icon: HardDrive },
+  { href: "/settings/system", label: "System", icon: Monitor },
   { href: "/settings/billing", label: "Billing", icon: CreditCard },
 ];
 
@@ -58,6 +61,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { isConnected, isReconnecting } = useWS();
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+
+  useEffect(() => {
+    api.getVersion().then(setVersionInfo).catch(() => {});
+  }, []);
 
   return (
     <div className="flex h-full flex-col bg-card dark:bg-[hsl(240,17%,7%)]">
@@ -137,6 +145,21 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         )}
       </nav>
 
+      {/* Update banner */}
+      {user?.role === "admin" && versionInfo?.update_available && (
+        <div className="mx-3 mb-2 rounded-lg bg-blue-500/10 border border-blue-500/20 p-2.5">
+          <div className="text-xs font-medium text-blue-400">Update available</div>
+          <div className="text-[10px] text-blue-400/70 mt-0.5">v{versionInfo.latest_version} is ready</div>
+          <Link
+            href="/settings/system"
+            onClick={onNavigate}
+            className="text-[10px] font-medium text-blue-400 hover:text-blue-300 mt-1 inline-block"
+          >
+            Update Now &rarr;
+          </Link>
+        </div>
+      )}
+
       {/* User section */}
       <div className="border-t border-border/50 p-3">
         <Link
@@ -179,6 +202,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <LogOut className="h-4 w-4" />
           Sign Out
         </Button>
+        {versionInfo && (
+          <div className="flex items-center gap-1.5 px-3 mt-2">
+            <span className="text-[10px] text-muted-foreground/60">v{versionInfo.current_version}</span>
+            {versionInfo.update_available && (
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" title="Update available" />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

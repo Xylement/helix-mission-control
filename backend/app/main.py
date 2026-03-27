@@ -27,6 +27,7 @@ from app.routers import marketplace as marketplace_router
 from app.routers import workflows as workflows_router
 from app.routers import plugins as plugins_router
 from app.routers import backups as backups_router
+from app.routers import version as version_router
 from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
@@ -262,6 +263,7 @@ app.include_router(workflows_router.exec_router, prefix="/api")
 app.include_router(plugins_router.router, prefix="/api")
 app.include_router(plugins_router.agent_plugin_router, prefix="/api")
 app.include_router(backups_router.router, prefix="/api")
+app.include_router(version_router.router, prefix="/api")
 app.include_router(websocket_router.router)
 
 
