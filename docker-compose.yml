@@ -106,6 +106,7 @@ services:
       - /home/helix/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:rw
       - /home/helix/.openclaw/identity:/home/helix/.openclaw/identity:ro
       - uploads-data:/data/uploads
+      - ./backups:/home/helix/backups
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
       interval: 30s

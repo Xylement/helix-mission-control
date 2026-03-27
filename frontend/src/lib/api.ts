@@ -593,6 +593,19 @@ export const api = {
   pluginExecutions: (id: number, limit?: number) =>
     request<PluginExecutionResult[]>(`/plugins/${id}/executions${limit ? `?limit=${limit}` : ""}`),
 
+  // Backups
+  getBackups: (page = 1, perPage = 20) =>
+    request<BackupListResponse>(`/backups?page=${page}&per_page=${perPage}`),
+  createBackup: () =>
+    request<BackupItem>("/backups", { method: "POST" }),
+  deleteBackup: (id: string) =>
+    request<void>(`/backups/${id}`, { method: "DELETE" }),
+  downloadBackupUrl: (id: string): string => `${API_BASE}/api/backups/${id}/download`,
+  getBackupSettings: () =>
+    request<BackupSettings>("/backups/settings"),
+  updateBackupSettings: (data: Partial<BackupSettings>) =>
+    request<BackupSettings>("/backups/settings", { method: "PUT", body: JSON.stringify(data) }),
+
   // Agent Plugins
   agentPlugins: (agentId: number) =>
     request<AgentPluginItem[]>(`/agents/${agentId}/plugins`),
@@ -1465,4 +1478,30 @@ export interface AgentCapabilityItem {
   capability_name: string;
   description: string | null;
   method: string | null;
+}
+
+// Backup types
+export interface BackupItem {
+  id: string;
+  filename: string;
+  file_size_bytes: number | null;
+  backup_type: string;
+  status: string;
+  error_message: string | null;
+  created_at: string | null;
+}
+
+export interface BackupListResponse {
+  backups: BackupItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface BackupSettings {
+  backup_enabled: boolean;
+  backup_schedule: string;
+  backup_time: string;
+  backup_day: string;
+  backup_retention_days: number;
 }

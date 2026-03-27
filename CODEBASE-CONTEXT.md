@@ -75,7 +75,9 @@
 
 ### Config Tables
 
-**organization_settings** — id (UUID PK), org_id (FK organizations UNIQUE), model_provider, model_name, model_api_key_encrypted, model_base_url, model_display_name, model_context_window (256000), model_max_tokens (8192), telegram_bot_token_encrypted, telegram_allowed_user_ids, timezone (Asia/Kuala_Lumpur), max_agents (50), created_at, updated_at
+**organization_settings** — id (UUID PK), org_id (FK organizations UNIQUE), model_provider, model_name, model_api_key_encrypted, model_base_url, model_display_name, model_context_window (256000), model_max_tokens (8192), telegram_bot_token_encrypted, telegram_allowed_user_ids, timezone (Asia/Kuala_Lumpur), max_agents (50), backup_enabled (bool DEFAULT false), backup_schedule (daily/weekly), backup_time (02:00), backup_day (monday), backup_retention_days (7), created_at, updated_at
+
+**backups** — id (UUID PK), org_id (FK organizations), filename, file_path, file_size_bytes (BIGINT), backup_type (auto/manual), status (completed/failed/in_progress), error_message (TEXT nullable), created_at
 
 **service_tokens** — id (UUID PK), org_id (FK organizations), name, token_hash (SHA256), token_prefix (8 chars), last_used_at, created_at, revoked_at
 
@@ -595,3 +597,27 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 
 **frontend/src/app/settings/models/page.tsx:**
 - `PROVIDER_BASE_URLS.kimi_code` updated to `https://api.kimi.com/coding/v1`.
+
+### March 27, 2026 — Automated Backups with Dashboard Management
+
+**Feature:** Pro plan and above get automated backups of PostgreSQL database, openclaw.json config, and agent workspace files. Stored locally on VPS with configurable schedule and retention.
+
+**New files:**
+- `backend/app/models/backup.py` — `Backup` SQLAlchemy model (id UUID, org_id, filename, file_path, file_size_bytes, backup_type, status, error_message, created_at)
+- `backend/app/services/backup_service.py` — Core backup functions: `create_backup()` (pg_dump + openclaw.json + workspaces -> tar.gz), `cleanup_old_backups()`, `get_backup_list()`, `get_backup_by_id()`, `delete_backup()`
+- `backend/app/routers/backups.py` — Admin-only endpoints: `GET /api/backups` (list, paginated), `POST /api/backups` (manual trigger), `GET /api/backups/{id}/download` (stream file), `DELETE /api/backups/{id}`, `GET /api/backups/settings`, `PUT /api/backups/settings`. All gated to Pro+ plans.
+- `frontend/src/app/settings/backups/page.tsx` — Settings > Backups page with schedule config (enable toggle, daily/weekly, time picker, day picker, retention 1-90 days) and backup history (list with download/delete, manual create button, plan gate overlay for starter/trial)
+
+**Modified files:**
+- `backend/app/models/organization_settings.py` — Added backup_enabled (bool), backup_schedule, backup_time, backup_day, backup_retention_days columns
+- `backend/app/main.py` — Added ALTER TABLE migrations for backup settings columns, registered backups router, added `periodic_backup_scheduler()` background task (hourly check, runs auto backups per schedule, cleans up old backups)
+- `backend/Dockerfile` — Added `postgresql-client` to apt-get install for pg_dump
+- `docker-compose.yml` — Added `./backups:/home/helix/backups` volume mount to backend service
+- `frontend/src/components/sidebar.tsx` — Added "Backups" (HardDrive icon) to admin nav items
+- `frontend/src/lib/api.ts` — Added backup API methods and TypeScript types (BackupItem, BackupListResponse, BackupSettings)
+
+**Backup storage:** `/home/helix/backups/helix-backup-{timestamp}.tar.gz` — contains database.sql, openclaw.json, and workspaces/ directory
+
+**Schema — backups table:** id (UUID PK), org_id (FK organizations), filename, file_path, file_size_bytes (BIGINT), backup_type (auto/manual), status (completed/failed/in_progress), error_message (TEXT nullable), created_at
+
+**Schema — organization_settings additions:** backup_enabled (BOOLEAN DEFAULT false), backup_schedule (VARCHAR DEFAULT 'daily'), backup_time (VARCHAR DEFAULT '02:00'), backup_day (VARCHAR DEFAULT 'monday'), backup_retention_days (INTEGER DEFAULT 7)

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,7 @@ from app.routers import org_settings as org_settings_router
 from app.routers import marketplace as marketplace_router
 from app.routers import workflows as workflows_router
 from app.routers import plugins as plugins_router
+from app.routers import backups as backups_router
 from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
@@ -67,6 +69,79 @@ async def periodic_license_check():
             logger.error("Periodic license check failed: %s", e)
 
 
+async def periodic_backup_scheduler():
+    """Check every hour if an automated backup is due and run it."""
+    BACKUP_PLANS = {"pro", "scale", "enterprise", "managed_business", "managed_enterprise"}
+    while True:
+        await asyncio.sleep(3600)  # Check every hour
+        try:
+            async with async_session() as db:
+                # Check license plan
+                svc = LicenseService(db)
+                plan_info = await svc.get_plan()
+                plan = plan_info.get("plan", "")
+                features = plan_info.get("limits", {}).get("features", [])
+                if "backups" not in features and plan not in BACKUP_PLANS:
+                    continue
+
+                # Get all org settings with backups enabled
+                from app.models.organization_settings import OrganizationSettings
+                result = await db.execute(
+                    select(OrganizationSettings).where(
+                        OrganizationSettings.backup_enabled == True
+                    )
+                )
+                all_settings = result.scalars().all()
+
+                now = datetime.now(timezone.utc)
+
+                for settings in all_settings:
+                    schedule = getattr(settings, "backup_schedule", "daily") or "daily"
+                    backup_time = getattr(settings, "backup_time", "02:00") or "02:00"
+                    backup_day = getattr(settings, "backup_day", "monday") or "monday"
+                    retention = getattr(settings, "backup_retention_days", 7) or 7
+
+                    # Parse backup hour
+                    try:
+                        target_hour = int(backup_time.split(":")[0])
+                    except (ValueError, AttributeError):
+                        target_hour = 2
+
+                    # Only run if current hour matches target hour
+                    if now.hour != target_hour:
+                        continue
+
+                    # For weekly, check day of week
+                    if schedule == "weekly":
+                        days = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+                                "friday": 4, "saturday": 5, "sunday": 6}
+                        if now.weekday() != days.get(backup_day.lower(), 0):
+                            continue
+
+                    # Check if we already ran a backup in the last 23 hours for this org
+                    from app.models.backup import Backup
+                    recent = await db.execute(
+                        select(Backup).where(
+                            Backup.org_id == settings.org_id,
+                            Backup.backup_type == "auto",
+                            Backup.created_at > now - timedelta(hours=23),
+                        ).limit(1)
+                    )
+                    if recent.scalar_one_or_none():
+                        continue
+
+                    # Run backup
+                    from app.services import backup_service
+                    logger.info("Running scheduled backup for org %d", settings.org_id)
+                    await backup_service.create_backup(db, settings.org_id, backup_type="auto")
+
+                    # Cleanup old backups
+                    await backup_service.cleanup_old_backups(db, settings.org_id, retention)
+
+        except Exception as e:
+            logger.error("Backup scheduler error: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
@@ -98,6 +173,22 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE boards ADD COLUMN IF NOT EXISTS description TEXT"
         ))
+        # Add backup settings columns to organization_settings if missing
+        await conn.execute(text(
+            "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS backup_enabled BOOLEAN DEFAULT false"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS backup_schedule VARCHAR(20) DEFAULT 'daily'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS backup_time VARCHAR(10) DEFAULT '02:00'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS backup_day VARCHAR(20) DEFAULT 'monday'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS backup_retention_days INTEGER DEFAULT 7"
+        ))
     if os.environ.get("SEED_DATA", "").lower() == "true":
         async with async_session() as db:
             await seed_all(db)
@@ -119,10 +210,12 @@ async def lifespan(app: FastAPI):
     # Start Redis pub/sub listener for WebSocket broadcasting
     listener_task = asyncio.create_task(redis_listener())
     license_task = asyncio.create_task(periodic_license_check())
+    backup_task = asyncio.create_task(periodic_backup_scheduler())
     yield
     # Shutdown
     listener_task.cancel()
     license_task.cancel()
+    backup_task.cancel()
     await gateway.stop()
 
 
@@ -168,6 +261,7 @@ app.include_router(workflows_router.step_router, prefix="/api")
 app.include_router(workflows_router.exec_router, prefix="/api")
 app.include_router(plugins_router.router, prefix="/api")
 app.include_router(plugins_router.agent_plugin_router, prefix="/api")
+app.include_router(backups_router.router, prefix="/api")
 app.include_router(websocket_router.router)
 
 

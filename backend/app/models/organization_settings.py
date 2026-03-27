@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, Integer, ForeignKey, Text
+from sqlalchemy import String, DateTime, Integer, Boolean, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -35,6 +35,13 @@ class OrganizationSettings(Base):
     # Telegram config
     telegram_bot_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     telegram_allowed_user_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Backup settings
+    backup_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    backup_schedule: Mapped[str | None] = mapped_column(String(20), nullable=True, default="daily")
+    backup_time: Mapped[str | None] = mapped_column(String(10), nullable=True, default="02:00")
+    backup_day: Mapped[str | None] = mapped_column(String(20), nullable=True, default="monday")
+    backup_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True, default=7)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

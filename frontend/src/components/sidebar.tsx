@@ -30,6 +30,7 @@ import {
   CreditCard,
   GitBranch,
   Plug,
+  HardDrive,
 } from "lucide-react";
 
 const navItems = [
@@ -49,6 +50,7 @@ const adminNavItems = [
   { href: "/settings/model-config", label: "Model Config", icon: Settings2 },
   { href: "/settings/plugins", label: "Plugins", icon: Plug },
   { href: "/settings/organization", label: "Organization", icon: Settings2 },
+  { href: "/settings/backups", label: "Backups", icon: HardDrive },
   { href: "/settings/billing", label: "Billing", icon: CreditCard },
 ];
 
