@@ -14,16 +14,24 @@
 #   --branch <branch>     Git branch to install (default: main)
 #   --install-dir <path>  Installation directory (default: /home/helix/helix-mission-control)
 #
-# Requirements:
-#   - Fresh Ubuntu 22.04 or 24.04 LTS
+# Supported platforms:
+#   - Ubuntu 20.04, 22.04, 24.04 LTS
+#   - Debian 11 (Bullseye), 12 (Bookworm)
+#   - macOS (Apple Silicon + Intel) — local dev / small business use
+#
+# Requirements (Linux):
 #   - Root access (or sudo)
 #   - Minimum 2 vCPU, 2GB RAM (4GB recommended)
 #   - Port 80, 443 available (unless --skip-proxy)
+#
+# Requirements (macOS):
+#   - Docker Desktop installed and running
+#   - No root required
 
 set -euo pipefail
 
 # === Configuration ===
-HELIX_VERSION="1.0.0"
+HELIX_VERSION="1.1.0"
 HELIX_REPO="https://github.com/Xylement/helix-mission-control.git"
 HELIX_BRANCH="main"
 INSTALL_DIR="/home/helix/helix-mission-control"
@@ -33,6 +41,12 @@ DOMAIN=""
 SSL_EMAIL=""
 ENABLE_SSL="false"
 SKIP_PROXY="false"
+
+# OS detection globals
+OS=""
+OS_VERSION=""
+OS_CODENAME=""
+ARCH=""
 
 # === Colors ===
 RED='\033[0;31m'
@@ -75,6 +89,9 @@ show_help() {
 Usage:
   bash install.sh [OPTIONS]
 
+Supported platforms:
+  Ubuntu 20.04, 22.04, 24.04 | Debian 11, 12 | macOS (Apple Silicon + Intel)
+
 Options:
   --domain <domain>     Domain for SSL (e.g., helix.mycompany.com)
   --email <email>       Email for Let's Encrypt
@@ -116,19 +133,56 @@ if [ -n "$DOMAIN" ] && [ -n "$SSL_EMAIL" ] && [ "$DOMAIN" != "localhost" ]; then
 fi
 
 
-# === Pre-flight Checks ===
-preflight() {
+# === OS Detection ===
+detect_os() {
+    ARCH=$(uname -m)
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        OS="macos"
+        OS_VERSION=$(sw_vers -productVersion)
+        log "Detected macOS $OS_VERSION ($ARCH)"
+    elif [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+        OS_VERSION=$VERSION_ID
+        OS_CODENAME=$VERSION_CODENAME
+        log "Detected $PRETTY_NAME ($ARCH)"
+    else
+        error "Unsupported operating system. HELIX requires Ubuntu 20.04+, Debian 11+, or macOS 12+."
+        exit 1
+    fi
+
+    # Validate supported versions
+    case "$OS" in
+        ubuntu)
+            case "$OS_VERSION" in
+                20.04|22.04|24.04) ;;
+                *) error "Unsupported Ubuntu version: $OS_VERSION. Supported: 20.04, 22.04, 24.04"; exit 1 ;;
+            esac
+            ;;
+        debian)
+            case "$OS_VERSION" in
+                11|12) ;;
+                *) error "Unsupported Debian version: $OS_VERSION. Supported: 11 (Bullseye), 12 (Bookworm)"; exit 1 ;;
+            esac
+            ;;
+        macos) ;;
+        *)
+            error "Unsupported OS: $OS. HELIX requires Ubuntu 20.04+, Debian 11+, or macOS 12+."
+            exit 1
+            ;;
+    esac
+}
+
+
+# === Pre-flight Checks (Linux) ===
+preflight_linux() {
     log "Running pre-flight checks..."
 
     # Must be root or sudo
     if [ "$EUID" -ne 0 ]; then
         error "Please run as root: sudo bash install.sh"
         exit 1
-    fi
-
-    # Check Ubuntu version
-    if ! grep -qE "Ubuntu (22|24)\." /etc/os-release 2>/dev/null; then
-        warn "This script is designed for Ubuntu 22.04/24.04. Other versions may work but are untested."
     fi
 
     # Check minimum RAM (2GB)
@@ -163,9 +217,45 @@ preflight() {
 }
 
 
-# === Step 1: System Setup ===
-setup_system() {
-    log "Step 1/8: Updating system and installing essentials..."
+# === Pre-flight Checks (macOS) ===
+preflight_macos() {
+    log "Running pre-flight checks..."
+
+    # Check for Docker Desktop
+    if ! command -v docker &> /dev/null; then
+        error "Docker Desktop is required but not installed."
+        error "Download it from: https://www.docker.com/products/docker-desktop/"
+        error "After installing, make sure Docker Desktop is running, then re-run this script."
+        exit 1
+    fi
+
+    # Check Docker is actually running
+    if ! docker info &> /dev/null 2>&1; then
+        error "Docker Desktop is installed but not running."
+        error "Please start Docker Desktop and wait for it to be ready, then re-run this script."
+        exit 1
+    fi
+
+    # Check for docker compose
+    if ! docker compose version &> /dev/null 2>&1; then
+        error "Docker Compose not found. Please update Docker Desktop to the latest version."
+        exit 1
+    fi
+
+    # Check disk space (minimum 10GB free)
+    FREE_DISK=$(df -BG / 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G' 2>/dev/null || df -g / | tail -1 | awk '{print $4}')
+    if [ "$FREE_DISK" -lt 10 ]; then
+        error "Minimum 10GB free disk space required. Available: ${FREE_DISK}GB"
+        exit 1
+    fi
+
+    success "Pre-flight checks passed (Disk: ${FREE_DISK}GB free)"
+}
+
+
+# === Linux: Install System Packages ===
+install_packages_linux() {
+    log "Installing system packages..."
 
     apt-get update -qq
     apt-get upgrade -y -qq
@@ -179,9 +269,9 @@ setup_system() {
 }
 
 
-# === Step 2: Create helix user ===
-setup_user() {
-    log "Step 2/8: Setting up helix user..."
+# === Linux: Create helix user ===
+create_helix_user() {
+    log "Setting up helix user..."
 
     if id "$HELIX_USER" &>/dev/null; then
         warn "User '$HELIX_USER' already exists, skipping creation"
@@ -201,21 +291,24 @@ setup_user() {
 }
 
 
-# === Step 3: Install Docker ===
-setup_docker() {
-    log "Step 3/8: Installing Docker..."
+# === Linux: Install Docker ===
+install_docker_linux() {
+    log "Installing Docker..."
 
     if command -v docker &>/dev/null; then
         warn "Docker already installed: $(docker --version)"
     else
         install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+        # Docker GPG key — uses $OS for both Ubuntu and Debian
+        curl -fsSL "https://download.docker.com/linux/$OS/gpg" | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
         chmod a+r /etc/apt/keyrings/docker.gpg
 
+        # Docker repo — uses $OS (ubuntu or debian) and $OS_CODENAME
         echo \
             "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-            https://download.docker.com/linux/ubuntu \
-            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+            https://download.docker.com/linux/$OS \
+            $OS_CODENAME stable" | \
             tee /etc/apt/sources.list.d/docker.list > /dev/null
 
         apt-get update -qq
@@ -232,9 +325,9 @@ setup_docker() {
 }
 
 
-# === Step 4: Install Node.js ===
-setup_node() {
-    log "Step 4/8: Installing Node.js 22..."
+# === Linux: Install Node.js ===
+install_nodejs_linux() {
+    log "Installing Node.js 22..."
 
     if command -v node &>/dev/null && node --version | grep -q "v22"; then
         warn "Node.js 22 already installed: $(node --version)"
@@ -247,9 +340,9 @@ setup_node() {
 }
 
 
-# === Step 5: Setup Swap ===
-setup_swap() {
-    log "Step 5/8: Configuring swap..."
+# === Linux: Setup Swap ===
+setup_swap_linux() {
+    log "Configuring swap..."
 
     if swapon --show | grep -q "/swapfile"; then
         warn "Swap already configured"
@@ -282,18 +375,9 @@ setup_swap() {
 }
 
 
-# === Step 6: Clone and Configure ===
-setup_helix() {
-    log "Step 6/8: Installing HELIX Mission Control..."
-
-    if [ -d "$INSTALL_DIR" ]; then
-        warn "Installation directory exists. Pulling latest..."
-        cd "$INSTALL_DIR"
-        sudo -u "$HELIX_USER" git pull origin "$HELIX_BRANCH" || true
-    else
-        sudo -u "$HELIX_USER" git clone --branch "$HELIX_BRANCH" "$HELIX_REPO" "$INSTALL_DIR"
-        cd "$INSTALL_DIR"
-    fi
+# === Shared: Generate .env file ===
+generate_env_file() {
+    log "Generating .env configuration..."
 
     # Generate secrets
     POSTGRES_PW=$(openssl rand -hex 24)
@@ -303,13 +387,14 @@ setup_helix() {
 
     # Determine domain/URL
     if [ -z "$DOMAIN" ]; then
-        DOMAIN=$(curl -s4 ifconfig.me 2>/dev/null || hostname -I | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\./) {print $i; exit}}')
+        if [ "$OS" = "macos" ]; then
+            DOMAIN="localhost"
+        else
+            DOMAIN=$(curl -s4 ifconfig.me 2>/dev/null || hostname -I | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\./) {print $i; exit}}')
+        fi
     fi
 
-    # Create .env from template
-    if [ ! -f .env ] || [ ! -s .env ]; then
-        log "Generating .env configuration..."
-        cat > .env << ENVFILE
+    cat > .env << ENVFILE
 # ============================================================
 # HELIX Mission Control — Configuration
 # Generated by install.sh on $(date)
@@ -373,19 +458,75 @@ GENERATE_CONFIG=true
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
 ENVFILE
+}
+
+
+# === Shared: Clone repo ===
+clone_repo() {
+    if [ -d "$INSTALL_DIR" ]; then
+        warn "Installation directory exists. Pulling latest..."
+        cd "$INSTALL_DIR"
+        if [ "$OS" = "macos" ]; then
+            git pull origin "$HELIX_BRANCH" || true
+        else
+            sudo -u "$HELIX_USER" git pull origin "$HELIX_BRANCH" || true
+        fi
+    else
+        if [ "$OS" = "macos" ]; then
+            git clone --branch "$HELIX_BRANCH" "$HELIX_REPO" "$INSTALL_DIR"
+        else
+            sudo -u "$HELIX_USER" git clone --branch "$HELIX_BRANCH" "$HELIX_REPO" "$INSTALL_DIR"
+        fi
+        cd "$INSTALL_DIR"
+    fi
+}
+
+
+# === Shared: Setup OpenClaw directories ===
+setup_openclaw_dirs() {
+    local openclaw_base
+
+    if [ "$OS" = "macos" ]; then
+        openclaw_base="$HOME/.openclaw"
+    else
+        openclaw_base="/home/$HELIX_USER/.openclaw"
+    fi
+
+    mkdir -p "$openclaw_base/workspaces"
+    mkdir -p "$openclaw_base/identity"
+    mkdir -p "$openclaw_base/skills"
+    mkdir -p "$openclaw_base/canvas"
+    mkdir -p "$openclaw_base/cron"
+
+    if [ ! -f "$openclaw_base/openclaw.json" ]; then
+        echo '{}' > "$openclaw_base/openclaw.json"
+    fi
+
+    # On Linux, the gateway container runs as UID 1001
+    # On macOS, Docker Desktop handles UID mapping through its VM
+    if [ "$OS" != "macos" ]; then
+        chown -R 1001:1001 "$openclaw_base"
+    fi
+}
+
+
+# === Linux: Setup HELIX (clone, env, dirs) ===
+setup_helix_linux() {
+    log "Installing HELIX Mission Control..."
+
+    clone_repo
+
+    # Generate .env if not exists or empty
+    if [ ! -f .env ] || [ ! -s .env ]; then
+        generate_env_file
     else
         warn ".env already exists, preserving existing config"
     fi
 
-    # Create OpenClaw directories so volume mounts don't fail on fresh install
-    mkdir -p /home/$HELIX_USER/.openclaw/workspaces /home/$HELIX_USER/.openclaw/identity /home/$HELIX_USER/.openclaw/skills
-    if [ ! -f /home/$HELIX_USER/.openclaw/openclaw.json ]; then
-        echo '{}' > /home/$HELIX_USER/.openclaw/openclaw.json
-    fi
+    setup_openclaw_dirs
 
     # Set ownership
     chown -R "$HELIX_USER:$HELIX_USER" "$INSTALL_DIR"
-    chown -R 1001:1001 /home/$HELIX_USER/.openclaw
 
     # Select Caddyfile
     if [ "$SKIP_PROXY" != "true" ]; then
@@ -396,9 +537,9 @@ ENVFILE
 }
 
 
-# === Step 7: Build and Start ===
-start_helix() {
-    log "Step 7/8: Building and starting HELIX..."
+# === Linux: Build, Start, and Post-install ===
+start_helix_linux() {
+    log "Building and starting HELIX..."
 
     cd "$INSTALL_DIR"
 
@@ -437,8 +578,14 @@ start_helix() {
     log "Fixing openclaw workspace permissions..."
     chown -R 1001:1001 /home/$HELIX_USER/.openclaw
 
-    # Setup update daemon
+    success "HELIX Mission Control is running"
+}
+
+
+# === Linux: Install helix-updater systemd service ===
+install_updater_linux() {
     log "Setting up update daemon..."
+
     mkdir -p "${INSTALL_DIR}/data"
     chown "$HELIX_USER:$HELIX_USER" "${INSTALL_DIR}/data"
     chmod +x "${INSTALL_DIR}/update-daemon.sh"
@@ -466,13 +613,13 @@ UPDATER_EOF
     systemctl enable helix-updater 2>/dev/null || true
     systemctl start helix-updater 2>/dev/null || true
 
-    success "HELIX Mission Control is running"
+    success "Update daemon installed"
 }
 
 
-# === Step 8: Firewall ===
-setup_firewall() {
-    log "Step 8/8: Configuring firewall..."
+# === Linux: Firewall ===
+setup_firewall_linux() {
+    log "Configuring firewall..."
 
     ufw --force reset
     ufw default deny incoming
@@ -493,8 +640,8 @@ setup_firewall() {
 }
 
 
-# === Print Summary ===
-print_summary() {
+# === Linux: Print Summary ===
+print_summary_linux() {
     local ACCESS_URL
     if [ "$ENABLE_SSL" = "true" ] && [ -n "$DOMAIN" ] && [ "$DOMAIN" != "localhost" ]; then
         ACCESS_URL="https://${DOMAIN}"
@@ -542,6 +689,125 @@ BANNER
 }
 
 
+# === macOS: Full Installation ===
+install_macos() {
+    log "=== macOS Installation ==="
+
+    # Override defaults for macOS
+    INSTALL_DIR="$HOME/helix-mission-control"
+    HELIX_USER="$USER"
+    LOG_FILE="$HOME/.helix-install.log"
+
+    # Initialize log file
+    touch "$LOG_FILE"
+
+    preflight_macos
+
+    # Install Homebrew if not present
+    if ! command -v brew &> /dev/null; then
+        log "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        # Add to path for Apple Silicon
+        if [[ "$ARCH" == "arm64" ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        fi
+    fi
+
+    # Install Node.js via Homebrew
+    if ! command -v node &> /dev/null; then
+        log "Installing Node.js 22..."
+        brew install node@22
+        brew link node@22 --force --overwrite
+    else
+        log "Node.js already installed: $(node --version)"
+    fi
+
+    # Install git if not present (Xcode CLT)
+    if ! command -v git &> /dev/null; then
+        log "Installing git..."
+        brew install git
+    fi
+
+    # Clone repo
+    clone_repo
+
+    # Generate .env if not exists
+    if [ ! -f .env ] || [ ! -s .env ]; then
+        generate_env_file
+    else
+        warn ".env already exists, preserving existing config"
+    fi
+
+    # Create OpenClaw directories
+    setup_openclaw_dirs
+
+    # Build and start
+    log "Building and starting HELIX Mission Control..."
+    docker compose up -d --build
+
+    # Wait for services
+    log "Waiting for services to start..."
+    local retries=30
+    while [ $retries -gt 0 ]; do
+        if curl -sf http://localhost:8000/api/health > /dev/null 2>&1; then
+            break
+        fi
+        sleep 2
+        retries=$((retries - 1))
+    done
+
+    if [ $retries -eq 0 ]; then
+        warn "Backend did not become healthy in 60 seconds. Check logs: docker compose logs backend --tail=50"
+    fi
+
+    # Get IP
+    LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "localhost")
+
+    # Print access info
+    echo ""
+    echo -e "${GREEN}"
+    cat << 'BANNER'
+  ╔══════════════════════════════════════════════════════════╗
+  ║                                                          ║
+  ║   ██╗  ██╗███████╗██╗     ██╗██╗  ██╗                   ║
+  ║   ██║  ██║██╔════╝██║     ██║╚██╗██╔╝                   ║
+  ║   ███████║█████╗  ██║     ██║ ╚███╔╝                    ║
+  ║   ██╔══██║██╔══╝  ██║     ██║ ██╔██╗                    ║
+  ║   ██║  ██║███████╗███████╗██║██╔╝ ██╗                   ║
+  ║   ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝╚═╝  ╚═╝                 ║
+  ║                                                          ║
+  ║   Mission Control — Installed on macOS!                  ║
+  ║                                                          ║
+  ╚══════════════════════════════════════════════════════════╝
+BANNER
+    echo -e "${NC}"
+    echo ""
+    echo -e "  ${BLUE}Access URL:${NC}  http://${LOCAL_IP}:3000"
+    echo -e "  ${BLUE}Local URL:${NC}   http://localhost:3000"
+    echo ""
+    echo -e "  ${BLUE}Next steps:${NC}"
+    echo "    1. Open http://localhost:3000 in your browser"
+    echo "    2. Complete the onboarding wizard"
+    echo "    3. Configure your AI model (API key)"
+    echo "    4. Create departments, boards, and agents"
+    echo ""
+    echo -e "  ${YELLOW}NOTE:${NC} macOS installation does not include:"
+    echo "    - Automatic updates (no helix-updater service)"
+    echo "    - Firewall configuration"
+    echo "    - Swap configuration"
+    echo "    To update: cd $INSTALL_DIR && git pull && docker compose up -d --build"
+    echo ""
+    echo -e "  ${BLUE}Useful commands:${NC}"
+    echo "    cd $INSTALL_DIR"
+    echo "    docker compose logs -f              # View all logs"
+    echo "    docker compose logs backend -f      # Backend logs"
+    echo "    docker compose restart              # Restart all"
+    echo ""
+    echo -e "  ${BLUE}Log file:${NC}  $LOG_FILE"
+    echo ""
+}
+
+
 # === Main ===
 main() {
     echo ""
@@ -549,20 +815,46 @@ main() {
     log "============================================"
     echo ""
 
-    # Initialize log file
-    mkdir -p "$(dirname "$LOG_FILE")"
-    touch "$LOG_FILE"
+    detect_os
 
-    preflight
-    setup_system
-    setup_user
-    setup_docker
-    setup_node
-    setup_swap
-    setup_helix
-    start_helix
-    setup_firewall
-    print_summary
+    if [ "$OS" = "macos" ]; then
+        install_macos
+    else
+        # Linux flow (Ubuntu + Debian)
+
+        # Initialize log file
+        mkdir -p "$(dirname "$LOG_FILE")"
+        touch "$LOG_FILE"
+
+        preflight_linux
+
+        log "Step 1/8: System packages..."
+        install_packages_linux
+
+        log "Step 2/8: Helix user..."
+        create_helix_user
+
+        log "Step 3/8: Docker..."
+        install_docker_linux
+
+        log "Step 4/8: Node.js..."
+        install_nodejs_linux
+
+        log "Step 5/8: Swap..."
+        setup_swap_linux
+
+        log "Step 6/8: HELIX application..."
+        setup_helix_linux
+
+        log "Step 7/8: Build and start..."
+        start_helix_linux
+        install_updater_linux
+
+        log "Step 8/8: Firewall..."
+        setup_firewall_linux
+
+        print_summary_linux
+    fi
 }
 
 main "$@"

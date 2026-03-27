@@ -667,3 +667,19 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **All templates:** is_official=true, is_featured=true, author=helixnode, status=published, min_plan=starter
 
 **No Mission Control code changes** — skills are marketplace-only, installed by customers through the Marketplace page. Installed skills get injected into agent prompts at dispatch time via `resolve_active_skills()`.
+
+### March 27, 2026 — Multi-OS Install Script
+
+**install.sh:**
+- Refactored from monolithic functions into modular OS-aware functions
+- Added `detect_os()` — detects Ubuntu (20.04/22.04/24.04), Debian (11/12), and macOS (Apple Silicon + Intel)
+- Docker repo setup now uses `$OS` variable (`ubuntu` or `debian`) instead of hardcoded `ubuntu` — works for both distros
+- NodeSource setup unchanged (already supports both Ubuntu and Debian)
+- Added full macOS installation path: requires Docker Desktop pre-installed, uses Homebrew for Node.js/git, installs to `~/helix-mission-control/`, skips user creation/swap/firewall/systemd
+- OpenClaw dirs on macOS: no `chown 1001:1001` needed (Docker Desktop VM handles UID mapping)
+- macOS skips helix-updater systemd service — manual update instructions printed instead
+- All Linux behavior preserved identically for Ubuntu 24.04 (tested path)
+- Version bumped to 1.1.0
+
+**docker-compose.yml:**
+- Removed `version: "3.9"` line — Docker Compose v2 doesn't need it and it generates a deprecation warning
