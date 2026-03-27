@@ -17,7 +17,6 @@ import {
   Lock,
   Save,
   Clock,
-  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 
