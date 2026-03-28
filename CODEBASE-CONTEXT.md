@@ -1,6 +1,6 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
-## Last updated: March 19, 2026 (post Phase 6, Stripe live)
+## Last updated: March 28, 2026 (v1.1.1 release)
 
 ---
 
@@ -697,6 +697,34 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `getting-started/installation.md` — Split install command into Linux and macOS sections with headers
 - `getting-started/beta-quickstart.md` — Added macOS as "Option B" in requirements, dual install commands
 - `getting-started/requirements.md` — Complete rewrite: supported OS table (Ubuntu 20/22/24, Debian 11/12, macOS 12+), separate Linux vs macOS requirement tables, macOS differences callout
+
+### March 28, 2026 — v1.1.1 Bug Fixes (merged from staging branch)
+
+**New: Staging environment at ~/helix-staging/**
+- Separate Docker Compose stack on staging branch
+- Ports: Frontend 3100, Backend 8010, PostgreSQL 5435, Redis 6380
+- Host OpenClaw staging gateway on port 18810 (systemd: openclaw-staging.service)
+- URL: https://staging.helixnode.tech
+- License: HLX-STG1-7F27-48F9-90C7 (Scale tier)
+- All new development/testing happens on staging first, then merges to main
+
+**Fix 1: License key formatter (frontend/src/lib/billing.ts)**
+- formatLicenseKey() grouped all chars by 4, breaking the 3-char HLX prefix
+- Fixed to keep HLX as first group, then groups of 4 for remaining chars
+
+**Fix 2: Billing cache response format (backend/app/routers/billing.py)**
+- License server returns status nested in billing.status, but _cache_response() expected top-level status
+- Result: after activation, cache stored status:unknown, plan showed as invalid, locking users out
+- Fixed by transforming activate/trial responses into flat BillingPlan format before caching
+
+**Fix 3: Gateway entrypoint sk-kimi key extraction (gateway/entrypoint.sh)**
+- sk-kimi keys stored in auth-profiles.json weren't being extracted due to broken control flow
+- KIMI_API_KEY env var was empty, causing OpenClaw auth failure on task dispatch
+- Fixed control flow to always extract key when auth profile exists
+
+**Fix 4: Gateway config isolation (docker-compose, entrypoint)**
+- Gateway container was mounting entire .openclaw directory, overwriting host config on startup
+- Fixed to use isolated Docker volume for container config, read-only mounts for credentials only
 
 ### March 27, 2026 — Update Model Provider Lists to Current 2026 Lineups
 
