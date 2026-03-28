@@ -6,6 +6,17 @@ echo "=== HELIX Gateway Container Starting ==="
 # Generate openclaw.json from environment variables
 CONFIG_DIR="/home/openclaw/.openclaw"
 CONFIG_FILE="$CONFIG_DIR/openclaw.json"
+AUTH_PROFILES="$CONFIG_DIR/agents/main/agent/auth-profiles.json"
+
+# Check if auth-profiles.json has a kimi-coding credential
+has_kimi_auth_profile() {
+    [ -f "$AUTH_PROFILES" ] && node -e "
+        const c = require('$AUTH_PROFILES');
+        const profiles = c.profiles || {};
+        const hasKimi = Object.values(profiles).some(p => p.provider === 'kimi-coding' && p.key && p.key.length > 8);
+        process.exit(hasKimi ? 0 : 1);
+    " 2>/dev/null
+}
 
 # Check if openclaw.json already has an API key (written by backend from DB)
 config_has_key() {
@@ -17,8 +28,48 @@ config_has_key() {
     " 2>/dev/null
 }
 
-# If no API key in env, poll config file until backend writes one (after onboarding)
-if [ -z "${MODEL_API_KEY}" ]; then
+# For kimi-coding/kimi_code providers, use auth profiles instead of env API keys.
+# OpenClaw's built-in kimi-coding provider reads credentials from the credential store,
+# not from env vars — putting the key in env.KIMI_API_KEY causes a 403 from api.kimi.com.
+USE_AUTH_PROFILE="false"
+if [ "${MODEL_PROVIDER}" = "kimi-coding" ] || [ "${MODEL_PROVIDER}" = "kimi_code" ]; then
+    if [ -z "${MODEL_API_KEY}" ] && [ -f "$AUTH_PROFILES" ]; then
+        EXTRACTED_KEY=$(node -e "
+            const c = require('$AUTH_PROFILES');
+            const profiles = c.profiles || {};
+            for (const p of Object.values(profiles)) {
+                if (p.key && p.key.length > 8) { process.stdout.write(p.key); break; }
+            }
+        " 2>/dev/null)
+        if [ -n "$EXTRACTED_KEY" ]; then
+            echo "Found kimi-coding API key in auth-profiles.json."
+            export MODEL_API_KEY="$EXTRACTED_KEY"
+            USE_AUTH_PROFILE="true"
+        fi
+    elif [ -n "${MODEL_API_KEY}" ]; then
+        USE_AUTH_PROFILE="true"
+    fi
+fi
+
+# For non-kimi providers: if no MODEL_API_KEY, try extracting from auth profiles
+if [ "$USE_AUTH_PROFILE" = "false" ] && [ -z "${MODEL_API_KEY}" ]; then
+    if [ -f "$AUTH_PROFILES" ]; then
+        EXTRACTED_KEY=$(node -e "
+            const c = require('$AUTH_PROFILES');
+            const profiles = c.profiles || {};
+            for (const p of Object.values(profiles)) {
+                if (p.key && p.key.length > 8) { process.stdout.write(p.key); break; }
+            }
+        " 2>/dev/null)
+        if [ -n "$EXTRACTED_KEY" ]; then
+            echo "Found API key in auth-profiles.json, proceeding..."
+            export MODEL_API_KEY="$EXTRACTED_KEY"
+        fi
+    fi
+fi
+
+# If still no API key and no auth profile, poll config file until backend writes one
+if [ "$USE_AUTH_PROFILE" = "false" ] && [ -z "${MODEL_API_KEY}" ]; then
     if config_has_key; then
         echo "Found API key in config file, proceeding..."
         GENERATE_CONFIG="false"
@@ -33,6 +84,11 @@ if [ -z "${MODEL_API_KEY}" ]; then
             if config_has_key; then
                 echo "API key detected in config file! Starting gateway..."
                 GENERATE_CONFIG="false"
+                break
+            fi
+            if has_kimi_auth_profile; then
+                echo "Kimi auth profile detected! Starting gateway..."
+                USE_AUTH_PROFILE="true"
                 break
             fi
         done
@@ -61,12 +117,7 @@ case "${MODEL_PROVIDER:-moonshot}" in
     API_KEY_ENV="NVIDIA_API_KEY"
     API_TYPE="openai-completions"
     ;;
-  kimi-coding)
-    BASE_URL="${MODEL_BASE_URL:-https://api.kimi.com/coding/}"
-    API_KEY_ENV="KIMI_API_KEY"
-    API_TYPE="anthropic-messages"
-    ;;
-  kimi_code)
+  kimi-coding|kimi_code)
     BASE_URL="${MODEL_BASE_URL:-https://api.kimi.com/coding/}"
     API_KEY_ENV="KIMI_API_KEY"
     API_TYPE="anthropic-messages"
@@ -99,6 +150,16 @@ if [ ! -f "$CONFIG_FILE" ] || [ "${GENERATE_CONFIG:-true}" = "true" ]; then
   }"
   fi
 
+  # All providers: use env-based API key in config
+  # For kimi-coding/kimi_code: normalize to kimi-coding provider name
+  if [ "$USE_AUTH_PROFILE" = "true" ]; then
+    EFFECTIVE_PROVIDER="kimi-coding"
+    EFFECTIVE_MODEL_REF="kimi-coding/${MODEL_NAME:-k2p5}"
+  else
+    EFFECTIVE_PROVIDER="${MODEL_PROVIDER}"
+    EFFECTIVE_MODEL_REF="${MODEL_PROVIDER}/${MODEL_NAME:-kimi-k2.5}"
+  fi
+
   cat > "$CONFIG_FILE" << EOJSON
 {
   "env": {
@@ -109,26 +170,26 @@ if [ ! -f "$CONFIG_FILE" ] || [ "${GENERATE_CONFIG:-true}" = "true" ]; then
   "agents": {
     "defaults": {
       "model": {
-        "primary": "${MODEL_PROVIDER}/${MODEL_NAME:-kimi-k2.5}"
+        "primary": "${EFFECTIVE_MODEL_REF}"
       }
     }
   },
   "models": {
     "mode": "merge",
     "providers": {
-      "${MODEL_PROVIDER}": {
+      "${EFFECTIVE_PROVIDER}": {
         "baseUrl": "${BASE_URL}",
         "apiKey": "\${${API_KEY_ENV}}",
         "api": "${API_TYPE}",
         "models": [
           {
-            "id": "${MODEL_NAME:-kimi-k2.5}",
+            "id": "${MODEL_NAME:-k2p5}",
             "name": "${MODEL_DISPLAY_NAME:-${MODEL_NAME:-Kimi K2.5}}",
-            "reasoning": false,
-            "input": ["text"],
+            "reasoning": true,
+            "input": ["text", "image"],
             "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-            "contextWindow": ${MODEL_CONTEXT_WINDOW:-256000},
-            "maxTokens": ${MODEL_MAX_TOKENS:-8192}
+            "contextWindow": ${MODEL_CONTEXT_WINDOW:-262144},
+            "maxTokens": ${MODEL_MAX_TOKENS:-32768}
           }
         ]
       }
@@ -157,8 +218,7 @@ if [ ! -f "$CONFIG_FILE" ] || [ "${GENERATE_CONFIG:-true}" = "true" ]; then
   }${TELEGRAM_CONFIG}
 }
 EOJSON
-
-  echo "Generated openclaw.json with provider: ${MODEL_PROVIDER}"
+  echo "Generated openclaw.json with provider: ${EFFECTIVE_PROVIDER}"
 fi
 
 # Start the gateway

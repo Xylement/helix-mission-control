@@ -94,8 +94,23 @@ async def activate_license(
             )
             if resp.status_code == 200:
                 data = resp.json()
-                await svc._cache_response(data, body.license_key)
-                return data
+                # Transform ActivateResponse into the format expected by
+                # frontend (BillingPlan) and _cache_response (needs top-level status)
+                billing_info = data.get("billing", {})
+                transformed = {
+                    "valid": data.get("valid", True),
+                    "plan": data.get("plan", "none"),
+                    "limits": data.get("limits", {}),
+                    "status": billing_info.get("status", "active"),
+                    "message": f"License activated on {data.get('plan', '')} plan.",
+                    "expires_at": billing_info.get("current_period_end"),
+                    "trial": False,
+                    "trial_ends_at": None,
+                    "grace_period_ends": None,
+                    "current_period_end": billing_info.get("current_period_end"),
+                }
+                await svc._cache_response(transformed, body.license_key)
+                return transformed
             else:
                 error_body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
                 raise HTTPException(
@@ -139,12 +154,24 @@ async def start_trial(
             if resp.status_code in (200, 201):
                 data = resp.json()
                 trial_key = data.get("license_key", "")
+                # Transform TrialResponse into BillingPlan format
+                limits = data.get("limits", {})
+                transformed = {
+                    "valid": True,
+                    "plan": data.get("plan", "trial"),
+                    "limits": limits,
+                    "status": "active",
+                    "message": "Free trial activated!",
+                    "expires_at": data.get("trial_ends_at"),
+                    "trial": True,
+                    "trial_ends_at": data.get("trial_ends_at"),
+                    "grace_period_ends": None,
+                    "license_key": trial_key,
+                }
                 if trial_key:
-                    # Save the trial key to DB
                     await svc.save_license_key(trial_key)
-                    # Cache the response
-                    await svc._cache_response(data, trial_key)
-                return data
+                    await svc._cache_response(transformed, trial_key)
+                return transformed
             else:
                 error_body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
                 raise HTTPException(

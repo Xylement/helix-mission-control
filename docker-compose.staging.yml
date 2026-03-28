@@ -57,11 +57,13 @@ services:
       - GATEWAY_TOKEN=${GATEWAY_TOKEN}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS:-}
-      - GENERATE_CONFIG=${GENERATE_CONFIG:-false}
+      - GENERATE_CONFIG=true
       - MC_API_BASE=http://staging-backend:8000
       - MC_SERVICE_TOKEN=${SERVICE_TOKEN:-}
     volumes:
-      - /home/helix/.openclaw-staging:/home/openclaw/.openclaw
+      - staging_gateway_config:/home/openclaw/.openclaw
+      - /home/helix/.openclaw-staging/agents/main/agent/auth-profiles.json:/home/openclaw/.openclaw/agents/main/agent/auth-profiles.json:ro
+      - /home/helix/.openclaw-staging/identity:/home/openclaw/.openclaw/identity:ro
     networks:
       - helix-staging-network
     healthcheck:
@@ -91,7 +93,7 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://staging-redis:6379/0}
       - JWT_SECRET=${JWT_SECRET}
       - ENVIRONMENT=staging
-      - OPENCLAW_GATEWAY_URL=${GATEWAY_URL:-ws://staging-gateway:18789}
+      - OPENCLAW_GATEWAY_URL=ws://staging-gateway:18789
       - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3100,https://staging.helixnode.tech}
       - HELIX_SERVICE_TOKEN=${SERVICE_TOKEN:-}
@@ -157,6 +159,7 @@ volumes:
   staging_postgres_data:
   staging_uploads_data:
   staging_redis_data:
+  staging_gateway_config:
 
 networks:
   helix-staging-network:

@@ -295,14 +295,15 @@ export async function openCustomerPortal(licenseKey: string): Promise<void> {
 // ─── License key formatting ─────────────────────────────────────────────────
 
 export function formatLicenseKey(input: string): string {
-  // Remove non-alphanumeric except dashes
   const clean = input.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-  // Insert dashes every 4 chars, keep prefix "HLX" as first group
-  const parts: string[] = [];
-  for (let i = 0; i < clean.length; i += 4) {
-    parts.push(clean.slice(i, i + 4));
+  if (clean.length <= 3) return clean;
+  // HLX prefix + groups of 4
+  let result = clean.slice(0, 3);
+  const rest = clean.slice(3);
+  for (let i = 0; i < rest.length && i < 16; i += 4) {
+    result += "-" + rest.slice(i, i + 4);
   }
-  return parts.join("-").slice(0, 24); // HLX-XXXX-XXXX-XXXX-XXXX = 24 chars
+  return result;
 }
 
 export function maskLicenseKey(key: string): string {
