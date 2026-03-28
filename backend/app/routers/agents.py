@@ -17,6 +17,7 @@ from app.models.activity import ActivityLog
 from app.schemas.agent import AgentOut, AgentCreate, AgentUpdate
 from app.services.license_service import LicenseService
 from app.services.gateway import gateway
+from app.services.permissions import get_user_accessible_board_ids
 
 OPENCLAW_WORKSPACE_BASE = "/home/helix/.openclaw/workspaces"
 
@@ -420,16 +421,23 @@ async def get_agent_tasks(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    # Filter by board permissions
+    is_admin_user, accessible_ids = await get_user_accessible_board_ids(db, user)
+
     q = (
         select(Task)
         .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
         .where(Task.assigned_agent_id == agent_id)
         .order_by(Task.created_at.desc())
     )
+    if not is_admin_user:
+        q = q.where(Task.board_id.in_(accessible_ids) if accessible_ids else Task.board_id == -1)
     if status:
         q = q.where(Task.status == status)
 
     count_q = select(func.count(Task.id)).where(Task.assigned_agent_id == agent_id)
+    if not is_admin_user:
+        count_q = count_q.where(Task.board_id.in_(accessible_ids) if accessible_ids else Task.board_id == -1)
     if status:
         count_q = count_q.where(Task.status == status)
     total = (await db.execute(count_q)).scalar() or 0

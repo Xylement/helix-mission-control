@@ -225,6 +225,8 @@ async def update_task(
 
     # Permission check: CREATE users can only update their own tasks
     user_level = await get_user_board_permission(db, user, task.board_id)
+    if not has_permission(user_level, "view"):
+        raise HTTPException(status_code=404, detail="Task not found")
     if not has_permission(user_level, "create"):
         raise HTTPException(
             status_code=403,
@@ -363,6 +365,8 @@ async def delete_task(
 
     # Permission check: MANAGE can delete any, CREATE can delete own tasks only
     user_level = await get_user_board_permission(db, user, task.board_id)
+    if not has_permission(user_level, "view"):
+        raise HTTPException(status_code=404, detail="Task not found")
     is_creator = task.created_by_user_id == user.id
     if has_permission(user_level, "manage") or (has_permission(user_level, "create") and is_creator):
         pass  # allowed
@@ -405,6 +409,8 @@ async def execute_task(
     task = await _verify_task_in_org(db, task_id, org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    await check_board_access(db, user, task.board_id, "create")
 
     if task.status not in ("todo", "rejected"):
         raise HTTPException(

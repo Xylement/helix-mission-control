@@ -17,6 +17,7 @@ from app.models.attachment import TaskAttachment
 from app.models.agent import Agent
 from app.models.user import User
 from app.services.activity import log_activity
+from app.services.permissions import check_board_access, get_user_accessible_board_ids
 
 logger = logging.getLogger("helix.attachments")
 
@@ -83,6 +84,8 @@ async def upload_attachment(
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    await check_board_access(db, user, task.board_id, "create")
 
     # Validate file extension
     filename = file.filename or "unnamed"
@@ -183,6 +186,8 @@ async def list_attachments(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    await check_board_access(db, _user, task.board_id, "view")
+
     attachments_result = await db.execute(
         select(TaskAttachment)
         .where(TaskAttachment.task_id == task_id)
@@ -213,12 +218,21 @@ async def download_attachment(
     _user=Depends(get_current_user),
 ):
     """Download an attachment file."""
+    org_id = getattr(_user, "org_id", None)
     result = await db.execute(
-        select(TaskAttachment).where(TaskAttachment.id == attachment_id)
+        select(TaskAttachment).where(
+            TaskAttachment.id == attachment_id,
+            TaskAttachment.org_id == org_id,
+        )
     )
     attachment = result.scalar_one_or_none()
     if not attachment:
         raise HTTPException(status_code=404, detail="Attachment not found")
+
+    # Check board permission via the parent task
+    task = (await db.execute(select(Task).where(Task.id == attachment.task_id))).scalar_one_or_none()
+    if task:
+        await check_board_access(db, _user, task.board_id, "view")
 
     if not os.path.exists(attachment.file_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
@@ -243,13 +257,22 @@ async def delete_attachment(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    """Delete an attachment (admin or uploader only)."""
+    """Delete an attachment (admin or uploader only, with board access)."""
+    org_id = getattr(user, "org_id", None)
     result = await db.execute(
-        select(TaskAttachment).where(TaskAttachment.id == attachment_id)
+        select(TaskAttachment).where(
+            TaskAttachment.id == attachment_id,
+            TaskAttachment.org_id == org_id,
+        )
     )
     attachment = result.scalar_one_or_none()
     if not attachment:
         raise HTTPException(status_code=404, detail="Attachment not found")
+
+    # Check board permission via the parent task
+    task = (await db.execute(select(Task).where(Task.id == attachment.task_id))).scalar_one_or_none()
+    if task:
+        await check_board_access(db, user, task.board_id, "create")
 
     # Permission check: admin or uploader
     is_admin = user.role == "admin"

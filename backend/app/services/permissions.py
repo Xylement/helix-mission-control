@@ -44,21 +44,14 @@ async def get_user_board_permission(db: AsyncSession, user, board_id: int) -> st
 async def check_board_access(db: AsyncSession, user, board_id: int, required: str):
     """
     Check if user has at least the required permission level.
-    Raises HTTPException(403) if not.
+    Raises HTTPException(404) if not — prevents board existence leakage.
     """
     from fastapi import HTTPException
 
     level = await get_user_board_permission(db, user, board_id)
     if not has_permission(level, required):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "error": "insufficient_permission",
-                "message": "You don't have permission to perform this action on this board",
-                "required": required,
-                "current": level,
-            },
-        )
+        # Return 404 instead of 403 to prevent board existence leakage
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 async def filter_boards_by_permission(
