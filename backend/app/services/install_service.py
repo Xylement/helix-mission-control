@@ -127,6 +127,19 @@ class InstallService:
                 result["plan_limit_ok"] = False
                 result["reason"] = f"Marketplace skill install limit reached ({max_installs})"
 
+        elif template_type == "department_pack":
+            # Pack installs multiple skills — check skill limit for the bundle size
+            included = manifest.get("included_templates", [])
+            current_installs = await self.marketplace.get_installed_count(org_id, "skill")
+            limits = license_info.get("limits", {}).get("marketplace_skill_installs", {})
+            max_installs = limits.get("limit", 0) if isinstance(limits, dict) else (limits or 0)
+            result["current_installs"] = current_installs
+            result["max_installs"] = max_installs
+            if max_installs > 0 and (current_installs + len(included)) > max_installs:
+                result["can_install"] = False
+                result["plan_limit_ok"] = False
+                result["reason"] = f"Pack contains {len(included)} skills but only {max_installs - current_installs} install slots remain"
+
         return result
 
     # ─── Agent Template Install ───
@@ -321,6 +334,74 @@ class InstallService:
             "template_slug": template_slug,
         }
 
+    # ─── Department Pack Install ───
+
+    async def install_department_pack(
+        self, org_id: int, user_id: int, template_slug: str,
+        customizations: dict | None = None,
+    ) -> dict:
+        """Install a department_pack — a bundle of templates (typically skills)."""
+        manifest = await self.marketplace.get_manifest(template_slug)
+        if manifest.get("type") != "department_pack":
+            raise ValueError(f"Template {template_slug} is not a department_pack")
+
+        requirements = manifest.get("requirements", {})
+
+        # Validate plan
+        min_plan = requirements.get("min_plan", "starter")
+        license_info = await self.license_service.get_plan()
+        plan = license_info.get("plan", "trial")
+        if PLAN_ORDER.get(plan, 0) < PLAN_ORDER.get(min_plan, 0):
+            raise PermissionError(f"This pack requires the {min_plan} plan or higher")
+
+        # Install each included template
+        included_slugs = manifest.get("included_templates", [])
+        installed = []
+        errors = []
+        for slug in included_slugs:
+            try:
+                # Check if already installed
+                if await self.marketplace.is_template_installed(org_id, slug):
+                    installed.append(slug)
+                    continue
+                # Fetch sub-template manifest to determine type
+                sub_manifest = await self.marketplace.get_manifest(slug)
+                sub_type = sub_manifest.get("type", "")
+                if sub_type == "skill":
+                    await self.install_skill_template(org_id, user_id, slug, customizations)
+                elif sub_type == "agent_template":
+                    await self.install_agent_template(org_id, user_id, slug, customizations)
+                else:
+                    errors.append(f"{slug}: unsupported type '{sub_type}'")
+                    continue
+                installed.append(slug)
+            except Exception as e:
+                logger.warning("Failed to install %s from pack %s: %s", slug, template_slug, e)
+                errors.append(f"{slug}: {e}")
+
+        # Record the pack itself as installed
+        await self.marketplace.record_install(
+            org_id=org_id,
+            template_slug=template_slug,
+            template_type="department_pack",
+            template_name=manifest.get("name", ""),
+            template_version=manifest.get("version", "1.0.0"),
+            manifest=manifest,
+            local_resource_id=0,
+            local_resource_type="pack",
+            installed_by=user_id,
+        )
+        await self.marketplace.log_install_to_registry(template_slug)
+
+        await self.db.commit()
+
+        return {
+            "success": True,
+            "template_slug": template_slug,
+            "installed_templates": installed,
+            "errors": errors,
+        }
+
     # ─── Uninstall ───
 
     async def uninstall_template(self, org_id: int, user_id: int, installed_template_id: int) -> dict:
@@ -337,6 +418,23 @@ class InstallService:
                 await self.skill_service.delete_skill(record.local_resource_id)
             except ValueError:
                 pass  # Skill already deleted
+        elif record.local_resource_type == "pack":
+            # Uninstall all included templates
+            pack_manifest = record.manifest or {}
+            for slug in pack_manifest.get("included_templates", []):
+                sub = await self.db.execute(
+                    select(InstalledTemplate).where(
+                        InstalledTemplate.org_id == org_id,
+                        InstalledTemplate.template_slug == slug,
+                        InstalledTemplate.is_active == True,
+                    )
+                )
+                sub_record = sub.scalar_one_or_none()
+                if sub_record:
+                    try:
+                        await self.uninstall_template(org_id, user_id, sub_record.id)
+                    except Exception as e:
+                        logger.warning("Failed to uninstall %s from pack: %s", slug, e)
 
         await self.marketplace.record_uninstall(installed_template_id, org_id)
         await self.marketplace.log_uninstall_to_registry(record.template_slug)

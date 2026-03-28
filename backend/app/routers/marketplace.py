@@ -163,6 +163,10 @@ async def install_template(
             result = await install_svc.install_skill_template(
                 org_id, user.id, body.template_slug, body.customizations
             )
+        elif template_type == "department_pack":
+            result = await install_svc.install_department_pack(
+                org_id, user.id, body.template_slug, body.customizations
+            )
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported template type: {template_type}")
 
