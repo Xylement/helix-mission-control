@@ -1,6 +1,6 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
-## Last updated: March 28, 2026 (v1.1.1 release)
+## Last updated: March 28, 2026 (v1.1.2 release)
 
 ---
 
@@ -748,24 +748,17 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 
 **Display-only change** — no impact on running agents, gateway, or API routing.
 
-### March 28, 2026 — Board Permission Enforcement Audit & Hardening
+### March 28, 2026 — v1.1.2 Board Permissions + Marketplace Fixes
 
-**Full audit of all API endpoints** for board-level permission enforcement gaps. The system uses a default-closed model (members see nothing unless explicitly granted via `board_permissions` table).
+**Board Permission Tightening:**
+- POST /tasks/{id}/execute — added check_board_access(create)
+- POST /tasks/{id}/attachments — added check_board_access(create)
+- GET /tasks/{id}/attachments — added check_board_access(view)
+- GET /attachments/{id}/download — added org_id filter + check_board_access(view)
+- DELETE /attachments/{id} — added org_id filter + check_board_access(create)
+- GET /agents/{id}/tasks — added get_user_accessible_board_ids filtering
+- check_board_access() returns 404 instead of 403
 
-**Gaps fixed:**
-
-1. **`backend/app/services/permissions.py`** — `check_board_access()` now returns HTTP 404 (was 403) to prevent board existence leakage to unauthorized users.
-
-2. **`backend/app/routers/tasks.py`** — `POST /tasks/{id}/execute`: Added `check_board_access(db, user, task.board_id, "create")`. Previously any org member could dispatch tasks on boards they couldn't access. Also added 404 guard before 403 in update/delete for users with no board access.
-
-3. **`backend/app/routers/attachments.py`** — All 4 endpoints hardened:
-   - `POST /tasks/{id}/attachments`: Added `check_board_access(create)` — was org-only check
-   - `GET /tasks/{id}/attachments`: Added `check_board_access(view)` — was org-only check
-   - `GET /attachments/{id}/download`: Added org_id filter + `check_board_access(view)` — had NO org or board check (any authenticated user with attachment ID could download)
-   - `DELETE /attachments/{id}`: Added org_id filter + `check_board_access(create)` — had no org check
-
-4. **`backend/app/routers/agents.py`** — `GET /agents/{id}/tasks`: Added board permission filtering via `get_user_accessible_board_ids()`. Previously returned all agent tasks regardless of board access, leaking task titles from restricted boards.
-
-**Endpoints verified as already protected:** boards (all), tasks (list/search/get/create/update/delete), comments (all), dashboard (stats + activity), activity log, board_permissions (admin-only), backups (admin-only), version, billing, departments, workflows (org-scoped), skills (org-scoped), notifications (user-scoped).
-
-**Not board-scoped (by design):** agents list/get/stats/status-log (org-level resources), departments, workflows, skills, mentions search, billing, marketplace.
+**Marketplace Fixes:**
+- Added department_pack type support to install_service.py
+- Added actual prompt content to 4 Agent Intelligence skill templates (hn-learning-loop, hn-self-reflection, hn-task-context, hn-feedback-loop)
