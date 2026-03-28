@@ -698,6 +698,11 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `getting-started/beta-quickstart.md` — Added macOS as "Option B" in requirements, dual install commands
 - `getting-started/requirements.md` — Complete rewrite: supported OS table (Ubuntu 20/22/24, Debian 11/12, macOS 12+), separate Linux vs macOS requirement tables, macOS differences callout
 
+### March 28, 2026 — v1.1.1 Fixes merged to main
+- All staging fixes (formatter, billing cache, gateway entrypoint, config isolation) merged to main and deployed to production
+- Version bumped to v1.1.1, tag pushed, license server updated
+- Staging continues as the development/testing environment
+
 ### March 28, 2026 — v1.1.1 Bug Fixes (merged from staging branch)
 
 **New: Staging environment at ~/helix-staging/**
