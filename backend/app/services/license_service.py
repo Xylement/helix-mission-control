@@ -82,6 +82,16 @@ class LicenseService:
         agent_count = (await self.db.execute(text("SELECT COUNT(*) FROM agents"))).scalar() or 0
         member_count = (await self.db.execute(text("SELECT COUNT(*) FROM users"))).scalar() or 0
 
+        # Read current version from VERSION file
+        current_version = "1.0.0"
+        for version_path in ["/app/VERSION", os.path.join(os.path.dirname(__file__), "..", "..", "VERSION"), "VERSION"]:
+            try:
+                with open(version_path, "r") as f:
+                    current_version = f.read().strip()
+                break
+            except FileNotFoundError:
+                continue
+
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(
@@ -89,7 +99,7 @@ class LicenseService:
                     json={
                         "license_key": effective_key,
                         "instance_id": instance_id,
-                        "version": "1.0.0",
+                        "version": current_version,
                         "current_agents": agent_count,
                         "current_members": member_count,
                     },
