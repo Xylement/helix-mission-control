@@ -261,6 +261,20 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### March 29, 2026 — Landing page: remove waitlist, add launch CTAs and install command
+
+**Context:** HELIX is now launched and selling. Landing page at `landing/index.html` still had pre-launch "early access" and "waitlist" messaging.
+
+**Changes — `landing/index.html`:**
+- Hero badge: "Now accepting early access signups" → "Now available — deploy in 10 minutes"
+- Hero CTA: "Join the Waitlist" (#waitlist) → "Get Started" (docs install page)
+- Self-hosted pricing buttons: Starter "Start Free Trial", Pro/Scale "Get Started" — all link to docs install page (users install first, activate from inside app)
+- Managed Cloud pricing buttons: "Get Started" → mailto:hello@helixnode.tech with plan name in subject (not self-serve yet)
+- Enterprise buttons: unchanged (already mailto:)
+- Bottom section: replaced entire waitlist form (email input, submit JS, success/error states) with "Deploy Your AI Team Today" section featuring install command (Linux/macOS tab switcher), "Read the Docs" CTA, and "View on GitHub" link
+- Removed `submitWaitlist()` JavaScript function and waitlist form CSS
+- No changes to Marketplace, Features, How It Works, White Label, or Footer sections
+
 ### March 26, 2026 — Update OpenAI provider models to GPT-5.x series
 
 **Problem:** OpenAI provider model list only included gpt-4o, gpt-4o-mini, and o1 — missing the entire GPT-5.x series.

@@ -673,7 +673,7 @@
     }
     .pricing-footnote strong { color: var(--text-secondary); }
 
-    /* === WAITLIST CTA === */
+    /* === GET STARTED CTA === */
     .waitlist {
       padding: 100px 0;
       background: var(--bg-secondary);
@@ -694,39 +694,8 @@
     }
     .waitlist-subtitle {
       font-size: 17px; color: var(--text-secondary);
-      max-width: 480px; margin: 0 auto 40px;
+      max-width: 480px; margin: 0 auto 32px;
       line-height: 1.7;
-    }
-    .waitlist-form {
-      display: flex; align-items: center; justify-content: center;
-      gap: 12px; max-width: 480px; margin: 0 auto;
-      position: relative; z-index: 1;
-    }
-    .waitlist-form input {
-      flex: 1; padding: 14px 18px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text-primary);
-      font-size: 15px;
-      font-family: var(--font-body);
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .waitlist-form input:focus { border-color: var(--accent); }
-    .waitlist-form input::placeholder { color: var(--text-muted); }
-    .waitlist-form button {
-      padding: 14px 28px; white-space: nowrap;
-    }
-    .waitlist-note {
-      font-size: 13px; color: var(--text-muted);
-      margin-top: 16px; position: relative; z-index: 1;
-    }
-    .waitlist-success {
-      display: none;
-      font-size: 16px; color: var(--accent);
-      font-weight: 600;
-      margin-top: 16px;
     }
 
     /* === FOOTER === */
@@ -788,8 +757,6 @@
       .steps { grid-template-columns: 1fr; }
       .demo-stats { grid-template-columns: 1fr 1fr; }
       .demo-kanban { grid-template-columns: 1fr; }
-      .waitlist-form { flex-direction: column; }
-      .waitlist-form button { width: 100%; }
       .pricing-grid, .pricing-grid.three-col { grid-template-columns: 1fr; max-width: 380px; margin-left: auto; margin-right: auto; }
       .footer-inner { flex-direction: column; text-align: center; }
       .footer-links { justify-content: center; }
@@ -847,13 +814,13 @@
     <div class="container hero-content">
       <div class="hero-badge">
         <span class="hero-badge-dot"></span>
-        Now accepting early access signups
+        Now available — deploy in 10 minutes
       </div>
       <h1>Your AI team.<br><span class="highlight">Your server. Your keys.</span></h1>
       <p>Deploy, manage, and orchestrate AI agents for marketing, customer service, operations, and dev — from a single self-hosted dashboard. No vendor lock-in. Ever.</p>
       <div class="hero-actions">
-        <a href="#waitlist" class="btn-primary">
-          Join the Waitlist
+        <a href="https://docs.helixnode.tech/getting-started/installation" class="btn-primary">
+          Get Started
           <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5-5-5-5"/></svg>
         </a>
         <a href="#demo" class="btn-secondary">
@@ -1117,7 +1084,7 @@
               <li>Community support</li>
             </ul>
             <div class="hosting-note"><strong>You host it</strong> — runs on any Ubuntu VPS ($5-10/mo)</div>
-            <a href="#waitlist" class="pricing-btn outline">Start 7-Day Trial</a>
+            <a href="https://docs.helixnode.tech/getting-started/installation" class="pricing-btn outline">Start Free Trial</a>
           </div>
           <div class="pricing-card featured fade-in">
             <div class="tier">Pro</div>
@@ -1132,7 +1099,7 @@
               <li>Priority email support</li>
             </ul>
             <div class="hosting-note"><strong>You host it</strong> — recommended 2+ vCPU VPS</div>
-            <a href="#waitlist" class="pricing-btn primary">Get Started</a>
+            <a href="https://docs.helixnode.tech/getting-started/installation" class="pricing-btn primary">Get Started</a>
           </div>
           <div class="pricing-card fade-in">
             <div class="tier">Scale</div>
@@ -1147,7 +1114,7 @@
               <li>Priority support + SLA</li>
             </ul>
             <div class="hosting-note"><strong>You host it</strong> — recommended 4+ vCPU VPS</div>
-            <a href="#waitlist" class="pricing-btn outline">Get Started</a>
+            <a href="https://docs.helixnode.tech/getting-started/installation" class="pricing-btn outline">Get Started</a>
           </div>
           <div class="pricing-card fade-in">
             <div class="tier">Enterprise</div>
@@ -1184,7 +1151,7 @@
               <li>Community support</li>
             </ul>
             <div class="hosting-note"><strong>We host it for you</strong> — managed VPS, SSL, updates, and monitoring included</div>
-            <a href="#waitlist" class="pricing-btn outline">Get Started</a>
+            <a href="mailto:hello@helixnode.tech?subject=HELIX Managed Cloud - Starter" class="pricing-btn outline">Get Started</a>
           </div>
           <div class="pricing-card featured fade-in">
             <div class="tier">Business</div>
@@ -1200,7 +1167,7 @@
               <li>Priority email support</li>
             </ul>
             <div class="hosting-note"><strong>We host it for you</strong> — high-performance server, auto-scaling, 99.9% uptime</div>
-            <a href="#waitlist" class="pricing-btn primary">Get Started</a>
+            <a href="mailto:hello@helixnode.tech?subject=HELIX Managed Cloud - Business" class="pricing-btn primary">Get Started</a>
           </div>
           <div class="pricing-card fade-in">
             <div class="tier">Enterprise</div>
@@ -1300,18 +1267,33 @@
     </div>
   </section>
 
-  <!-- WAITLIST -->
-  <section class="waitlist" id="waitlist">
-    <div class="container">
-      <div class="section-label fade-in">Early Access</div>
-      <h2 class="section-title fade-in">Be first in line</h2>
-      <p class="waitlist-subtitle fade-in">We're onboarding early users now. Join the waitlist and get notified when HELIX is ready for your team.</p>
-      <div class="waitlist-form fade-in" id="waitlistForm">
-        <input type="email" id="emailInput" placeholder="your@email.com" required>
-        <button class="btn-primary" onclick="submitWaitlist()">Join Waitlist</button>
+  <!-- GET STARTED -->
+  <section class="waitlist" id="get-started">
+    <div class="container" style="text-align:center;">
+      <div class="section-label fade-in">Get Started</div>
+      <h2 class="section-title fade-in">Deploy Your AI Team Today</h2>
+      <p class="waitlist-subtitle fade-in">One command. Ten minutes. Your AI workforce is ready.</p>
+      <div class="install-strip fade-in" style="animation-delay:0s;">
+        <div class="install-tabs">
+          <button class="install-tab active" onclick="switchInstallTab('linux', this)">Linux / VPS</button>
+          <button class="install-tab" onclick="switchInstallTab('macos', this)">macOS</button>
+        </div>
+        <div class="install-cmd" id="install-cmd-bottom" onclick="copyInstall(this)" title="Click to copy" data-cmd="curl -fsSL https://helixnode.tech/install.sh | sudo bash">
+          <span class="prompt">$</span> curl -fsSL https://helixnode.tech/install.sh | sudo bash
+          <span class="copy-icon">📋</span>
+          <span class="copied-msg">✓ Copied</span>
+        </div>
       </div>
-      <p class="waitlist-note fade-in">No spam. Just one email when it's your turn.</p>
-      <p class="waitlist-success" id="waitlistSuccess">You're on the list! We'll be in touch soon.</p>
+      <div style="margin-top:28px; display:flex; align-items:center; justify-content:center; gap:16px; flex-wrap:wrap;" class="fade-in">
+        <a href="https://docs.helixnode.tech/getting-started/installation" class="btn-primary" style="text-decoration:none;">
+          Read the Docs
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l5-5-5-5"/></svg>
+        </a>
+        <a href="https://github.com/Xylement/helix-mission-control" class="btn-secondary" style="text-decoration:none;" target="_blank">
+          View on GitHub
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 8h14M8 1l7 7-7 7"/></svg>
+        </a>
+      </div>
     </div>
   </section>
 
@@ -1403,35 +1385,6 @@
         icon.style.display = 'inline';
         msg.style.display = 'none';
       }, 2000);
-    }
-
-    // Waitlist submit
-    async function submitWaitlist() {
-      const email = document.getElementById('emailInput').value;
-      if (!email || !email.includes('@')) return;
-
-      const btn = document.querySelector('#waitlistForm button');
-      const origText = btn.textContent;
-      btn.textContent = 'Joining...';
-      btn.disabled = true;
-
-      try {
-        const res = await fetch('https://api.helixnode.tech/v1/waitlist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email }),
-        });
-        if (!res.ok) throw new Error('Request failed');
-        document.getElementById('waitlistForm').style.display = 'none';
-        document.querySelector('.waitlist-note').style.display = 'none';
-        document.getElementById('waitlistSuccess').style.display = 'block';
-      } catch (e) {
-        btn.textContent = origText;
-        btn.disabled = false;
-        const note = document.querySelector('.waitlist-note');
-        note.textContent = 'Something went wrong. Try again.';
-        note.style.color = 'var(--danger)';
-      }
     }
 
     // Scroll reveal
