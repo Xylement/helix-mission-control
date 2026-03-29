@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { api, type VersionInfo } from "@/lib/api";
 import { useBranding } from "@/contexts/BrandingContext";
+import { useBillingPlan } from "@/lib/billing";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -65,6 +66,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
   const { isConnected, isReconnecting } = useWS();
   const branding = useBranding();
+  const { plan: billingPlan } = useBillingPlan();
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
 
   useEffect(() => {
@@ -126,7 +128,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <div className="pt-5 pb-1.5 px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">
               Administration
             </div>
-            {adminNavItems.map((item) => {
+            {adminNavItems.filter((item) => item.href !== "/settings/white-label" || billingPlan?.limits?.features?.includes("white_label")).map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <Link
