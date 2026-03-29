@@ -185,7 +185,7 @@ async def step3_ai_model(req: Step3Request, db: AsyncSession = Depends(get_db)):
 
     # Sync model config to openclaw.json so gateway can detect the key and start
     from app.services.gateway import gateway
-    await gateway.sync_model_config_from_db()
+    await gateway.sync_model_config_from_db(force=True)
 
     return {"success": True, "next_step": 4}
 

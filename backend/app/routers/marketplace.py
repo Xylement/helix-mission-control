@@ -5,6 +5,7 @@ Proxies public browse to api.helixnode.tech; install/uninstall are local.
 import logging
 
 from fastapi import APIRouter, Depends, Query, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -14,6 +15,7 @@ from app.schemas.marketplace import (
     InstallRequest, UninstallRequest, ReviewCreate,
     InstalledTemplateSchema, PreInstallCheckResponse,
 )
+from app.models.white_label import WhiteLabelConfig
 from app.services.marketplace_service import MarketplaceService
 from app.services.install_service import InstallService
 from app.services.export_service import ExportService
@@ -34,6 +36,20 @@ def _get_services(db: AsyncSession):
     return marketplace_svc, install_svc, export_svc
 
 
+async def _is_marketplace_visible(db: AsyncSession, org_id: int) -> bool:
+    """Check if marketplace is visible for the given org. Defaults to True."""
+    result = await db.execute(
+        select(WhiteLabelConfig.marketplace_visible).where(
+            WhiteLabelConfig.org_id == org_id
+        )
+    )
+    visible = result.scalar_one_or_none()
+    return visible if visible is not None else True
+
+
+_EMPTY_PAGINATED = {"items": [], "total": 0, "page": 1, "page_size": 20, "total_pages": 0}
+
+
 # ─── Browse (proxy to registry) ───
 
 @router.get("/marketplace/templates")
@@ -47,6 +63,8 @@ async def list_templates(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        return _EMPTY_PAGINATED
     mp, _, _ = _get_services(db)
     try:
         return await mp.list_templates(type, category, q, sort, page, page_size)
@@ -61,6 +79,8 @@ async def get_template(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        raise HTTPException(status_code=404, detail="Marketplace is not available")
     mp, _, _ = _get_services(db)
     try:
         return await mp.get_template(slug)
@@ -75,6 +95,8 @@ async def get_template_manifest(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        raise HTTPException(status_code=404, detail="Marketplace is not available")
     mp, _, _ = _get_services(db)
     try:
         return await mp.get_manifest(slug)
@@ -87,6 +109,8 @@ async def list_categories(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        return []
     mp, _, _ = _get_services(db)
     try:
         return await mp.list_categories()
@@ -99,6 +123,8 @@ async def get_featured(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        return []
     mp, _, _ = _get_services(db)
     try:
         return await mp.get_featured()
@@ -114,6 +140,8 @@ async def list_reviews(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        return {"items": [], "total": 0, "page": 1, "page_size": page_size, "total_pages": 0}
     mp, _, _ = _get_services(db)
     try:
         return await mp.list_reviews(slug, page, page_size)
@@ -334,6 +362,8 @@ async def community_feed(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        return []
     mp, _, _ = _get_services(db)
     try:
         return await mp.get_community_feed(limit)
@@ -348,6 +378,8 @@ async def community_leaderboard(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        return []
     mp, _, _ = _get_services(db)
     try:
         return await mp.get_leaderboard(limit)
@@ -364,6 +396,8 @@ async def list_creators(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        return {"items": [], "total": 0, "page": 1, "per_page": page_size, "pages": 0}
     mp, _, _ = _get_services(db)
     try:
         return await mp.get_creators(page, page_size, sort)
@@ -378,6 +412,8 @@ async def get_creator(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not await _is_marketplace_visible(db, user.org_id):
+        raise HTTPException(status_code=404, detail="Marketplace is not available")
     mp, _, _ = _get_services(db)
     try:
         return await mp.get_creator_profile(username)

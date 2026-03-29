@@ -29,6 +29,8 @@ import {
   Users,
   Shield,
   ExternalLink,
+  ChevronDown,
+  Palette,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,12 +47,12 @@ function UsageBar({
 }) {
   const pct = limit > 0 ? Math.min((current / limit) * 100, 100) : 0;
   const color = pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-500" : "bg-emerald-500";
-  const textColor = pct > 90 ? "text-red-400" : pct > 70 ? "text-amber-400" : "text-emerald-400";
+  const textColor = pct > 90 ? "text-red-500 dark:text-red-400" : pct > 70 ? "text-amber-500 dark:text-amber-400" : "text-emerald-500 dark:text-emerald-400";
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm">
-        <span className="flex items-center gap-2 text-gray-400">
+        <span className="flex items-center gap-2 text-muted-foreground">
           <Icon className="h-4 w-4" />
           {label}
         </span>
@@ -58,7 +60,7 @@ function UsageBar({
           {current} / {limit === Infinity ? "Unlimited" : limit}
         </span>
       </div>
-      <div className="h-2 rounded-full bg-gray-700 overflow-hidden">
+      <div className="h-2 rounded-full bg-muted overflow-hidden">
         <div
           className={cn("h-full rounded-full transition-all duration-500", color)}
           style={{ width: `${pct}%` }}
@@ -74,6 +76,7 @@ export default function BillingPage() {
   const { usage, loading: usageLoading } = useBillingUsage();
   const [keyCopied, setKeyCopied] = useState(false);
   const [interval, setInterval] = useState<"monthly" | "annual">("monthly");
+  const [whiteLabelOpen, setWhiteLabelOpen] = useState(false);
   const [, setCheckingOut] = useState(false);
   const searchParams = useSearchParams();
 
@@ -116,10 +119,10 @@ export default function BillingPage() {
   };
 
   const getStatusBadge = () => {
-    if (plan?.trial) return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Trial</Badge>;
-    if (plan?.status === "active") return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Active</Badge>;
-    if (plan?.status === "expired") return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Expired</Badge>;
-    if (plan?.status === "payment_failed") return <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">Payment Failed</Badge>;
+    if (plan?.trial) return <Badge className="bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30">Trial</Badge>;
+    if (plan?.status === "active") return <Badge className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">Active</Badge>;
+    if (plan?.status === "expired") return <Badge className="bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30">Expired</Badge>;
+    if (plan?.status === "payment_failed") return <Badge className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30">Payment Failed</Badge>;
     return <Badge variant="secondary">{plan?.status || "Unknown"}</Badge>;
   };
 
@@ -164,20 +167,20 @@ export default function BillingPage() {
       </div>
 
       {/* A. Current Plan Card */}
-      <Card className="bg-gray-900/50 border-white/10">
+      <Card>
         <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
-                  <CreditCard className="h-5 w-5 text-blue-400" />
+                  <CreditCard className="h-5 w-5 text-blue-500 dark:text-blue-400" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl font-semibold">{tier?.name || currentPlan} Plan</h2>
                     {getStatusBadge()}
                   </div>
-                  <p className="text-sm text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     {plan?.trial && plan.trial_ends_at && (
                       <>Trial ends {new Date(plan.trial_ends_at).toLocaleDateString()}</>
                     )}
@@ -194,7 +197,7 @@ export default function BillingPage() {
                 </div>
               )}
               {tier && tier.monthly === 0 && (
-                <div className="text-2xl font-bold text-emerald-400">Free</div>
+                <div className="text-2xl font-bold text-emerald-500 dark:text-emerald-400">Free</div>
               )}
             </div>
 
@@ -216,9 +219,9 @@ export default function BillingPage() {
 
       {/* B. Usage Section */}
       {usage && (
-        <Card className="bg-gray-900/50 border-white/10">
+        <Card>
           <CardContent className="p-6">
-            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">Usage</h3>
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">Usage</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <UsageBar
                 label="Agents"
@@ -239,11 +242,11 @@ export default function BillingPage() {
 
       {/* C. License Key */}
       {plan?.license_key && (
-        <Card className="bg-gray-900/50 border-white/10">
+        <Card>
           <CardContent className="p-6">
-            <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">License Key</h3>
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">License Key</h3>
             <div className="flex items-center gap-3">
-              <code className="flex-1 rounded-lg bg-gray-800/50 border border-white/5 px-4 py-2.5 font-mono text-sm text-gray-300">
+              <code className="flex-1 rounded-lg bg-muted border border-border px-4 py-2.5 font-mono text-sm text-foreground">
                 {maskLicenseKey(plan.license_key)}
               </code>
               <Button
@@ -253,7 +256,7 @@ export default function BillingPage() {
                 className="cursor-pointer"
               >
                 {keyCopied ? (
-                  <Check className="h-4 w-4 text-emerald-400" />
+                  <Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
                 ) : (
                   <Copy className="h-4 w-4" />
                 )}
@@ -265,9 +268,9 @@ export default function BillingPage() {
       )}
 
       {/* D. Feature Access */}
-      <Card className="bg-gray-900/50 border-white/10">
+      <Card>
         <CardContent className="p-6">
-          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">Feature Access</h3>
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">Feature Access</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {Object.entries(FEATURE_MATRIX).map(([key, feat]) => {
               const available = currentPlanRank >= getPlanRank(feat.minPlan);
@@ -278,20 +281,20 @@ export default function BillingPage() {
                   className={cn(
                     "flex items-center justify-between rounded-lg border px-4 py-3 text-sm transition-colors",
                     available
-                      ? "border-white/10 bg-gray-800/30"
-                      : "border-white/5 bg-gray-900/30 opacity-60"
+                      ? "border-border bg-accent/30"
+                      : "border-border/50 bg-muted/30 opacity-60"
                   )}
                 >
                   <span className="flex items-center gap-2">
                     {available ? (
-                      <Check className="h-4 w-4 text-emerald-400" />
+                      <Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
                     ) : (
-                      <Lock className="h-4 w-4 text-gray-500" />
+                      <Lock className="h-4 w-4 text-muted-foreground" />
                     )}
                     {feat.label}
                   </span>
                   {!available && requiredTier && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-muted-foreground">
                       {requiredTier.name}+
                     </span>
                   )}
@@ -306,13 +309,13 @@ export default function BillingPage() {
       <div id="plans">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Available Plans</h3>
-          <div className="inline-flex items-center rounded-lg border border-white/10 bg-gray-900/50 p-1">
+          <div className="inline-flex items-center rounded-lg border border-border bg-muted/50 p-1">
             <button
               className={cn(
                 "px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer",
                 interval === "monthly"
-                  ? "bg-white/10 text-white"
-                  : "text-gray-400 hover:text-white"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               )}
               onClick={() => setInterval("monthly")}
             >
@@ -322,17 +325,17 @@ export default function BillingPage() {
               className={cn(
                 "px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer",
                 interval === "annual"
-                  ? "bg-white/10 text-white"
-                  : "text-gray-400 hover:text-white"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               )}
               onClick={() => setInterval("annual")}
             >
               Annual
-              <span className="ml-1 text-emerald-400">-15%</span>
+              <span className="ml-1 text-emerald-500 dark:text-emerald-400">-15%</span>
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <PlanCard
             plan="starter"
             interval={interval}
@@ -343,7 +346,7 @@ export default function BillingPage() {
             plan="pro"
             interval={interval}
             current={currentPlan === "pro"}
-            recommended={currentPlan !== "pro"}
+            recommended={currentPlan !== "pro" && getPlanRank(currentPlan) < getPlanRank("pro")}
             onSelect={handleSelectPlan}
           />
           <PlanCard
@@ -352,24 +355,77 @@ export default function BillingPage() {
             current={currentPlan === "scale"}
             onSelect={handleSelectPlan}
           />
-          <PlanCard
-            plan="enterprise"
-            interval={interval}
-            current={currentPlan === "enterprise"}
-            onSelect={handleSelectPlan}
-          />
         </div>
       </div>
 
+      {/* White Label Plans — collapsible */}
+      <div className="rounded-xl border border-border bg-card">
+        <button
+          className="w-full flex items-center justify-between px-6 py-5 cursor-pointer group"
+          onClick={() => setWhiteLabelOpen(!whiteLabelOpen)}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/10">
+              <Palette className="h-4.5 w-4.5 text-purple-500 dark:text-purple-400" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-medium">
+                Want to white-label this platform as your own?
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Remove all HelixNode branding and sell to your clients under your own brand.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground hidden sm:inline">View White Label Plans</span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                whiteLabelOpen && "rotate-180"
+              )}
+            />
+          </div>
+        </button>
+        {whiteLabelOpen && (
+          <div className="px-6 pb-6 pt-1 border-t border-border">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+              <PlanCard
+                plan="agency"
+                interval={interval}
+                current={currentPlan === "agency"}
+                onSelect={handleSelectPlan}
+              />
+              <PlanCard
+                plan="partner"
+                interval={interval}
+                current={currentPlan === "partner"}
+                onSelect={handleSelectPlan}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              Need a fully custom setup?{" "}
+              <a
+                href="mailto:sales@helixnode.tech"
+                className="text-purple-500 dark:text-purple-400 hover:text-purple-600 dark:hover:text-purple-300 transition-colors"
+              >
+                Contact sales
+              </a>{" "}
+              for Enterprise white-label pricing.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* E. Billing History Placeholder */}
-      <Card className="bg-gray-900/50 border-white/10">
+      <Card>
         <CardContent className="p-6">
-          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">Billing History</h3>
-          <div className="rounded-lg border border-dashed border-white/10 p-8 text-center">
-            <Shield className="h-8 w-8 text-gray-600 mx-auto mb-2" />
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">Billing History</h3>
+          <div className="rounded-lg border border-dashed border-border p-8 text-center">
+            <Shield className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
             {plan?.has_stripe ? (
               <>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-muted-foreground">
                   View your invoices and billing history in the Stripe Customer Portal.
                 </p>
                 <Button
@@ -383,7 +439,7 @@ export default function BillingPage() {
                 </Button>
               </>
             ) : (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 Your license was activated manually. Billing history is available for plans purchased through Stripe.
               </p>
             )}

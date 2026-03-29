@@ -32,8 +32,10 @@ import {
   Plug,
   HardDrive,
   Monitor,
+  Palette,
 } from "lucide-react";
 import { api, type VersionInfo } from "@/lib/api";
+import { useBranding } from "@/contexts/BrandingContext";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -53,6 +55,7 @@ const adminNavItems = [
   { href: "/settings/plugins", label: "Plugins", icon: Plug },
   { href: "/settings/organization", label: "Organization", icon: Settings2 },
   { href: "/settings/backups", label: "Backups", icon: HardDrive },
+  { href: "/settings/white-label", label: "White Label", icon: Palette },
   { href: "/settings/system", label: "System", icon: Monitor },
   { href: "/settings/billing", label: "Billing", icon: CreditCard },
 ];
@@ -61,6 +64,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { isConnected, isReconnecting } = useWS();
+  const branding = useBranding();
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
 
   useEffect(() => {
@@ -71,11 +75,15 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col bg-card dark:bg-[hsl(240,17%,7%)]">
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-border/50 px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 text-white font-bold text-sm shadow-md shadow-blue-500/20">
-          H
-        </div>
+        {branding.logo_url ? (
+          <img src={branding.logo_url} alt={branding.product_short_name} className="h-8 w-auto" />
+        ) : (
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 text-white font-bold text-sm shadow-md shadow-blue-500/20">
+            {branding.product_short_name.charAt(0)}
+          </div>
+        )}
         <div className="flex-1">
-          <div className="font-semibold text-sm tracking-tight">HELIX</div>
+          <div className="font-semibold text-sm tracking-tight">{branding.product_short_name}</div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Mission Control</div>
         </div>
         <ThemeToggle />
@@ -89,7 +97,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-0.5 px-3 pt-2 overflow-y-auto">
-        {navItems.map((item) => {
+        {navItems.filter((item) => item.href !== "/marketplace" || branding.marketplace_visible).map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
@@ -217,6 +225,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
 export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const branding = useBranding();
 
   return (
     <>
@@ -231,10 +240,14 @@ export function Sidebar() {
           <Menu className="h-5 w-5" />
         </Button>
         <div className="flex-1 flex items-center justify-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 text-white font-bold text-xs shadow-sm">
-            H
-          </div>
-          <span className="font-semibold text-sm tracking-tight">HELIX</span>
+          {branding.logo_url ? (
+            <img src={branding.logo_url} alt={branding.product_short_name} className="h-7 w-auto" />
+          ) : (
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 text-white font-bold text-xs shadow-sm">
+              {branding.product_short_name.charAt(0)}
+            </div>
+          )}
+          <span className="font-semibold text-sm tracking-tight">{branding.product_short_name}</span>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { billingApi } from "@/lib/billing";
 import { Stepper } from "@/components/onboarding/stepper";
 import { WelcomeStep } from "@/components/onboarding/welcome-step";
 import { OrgStep } from "@/components/onboarding/org-step";
@@ -10,15 +11,29 @@ import { AIModelStep } from "@/components/onboarding/ai-model-step";
 import { DepartmentsStep } from "@/components/onboarding/departments-step";
 import { AgentsStep } from "@/components/onboarding/agents-step";
 import { LicenseStep } from "@/components/onboarding/license-step";
+import { BrandingStep } from "@/components/onboarding/branding-step";
 import { TelegramStep } from "@/components/onboarding/telegram-step";
 import { TeamStep } from "@/components/onboarding/team-step";
 import { CompleteStep } from "@/components/onboarding/complete-step";
 import { Loader2 } from "lucide-react";
 
+const WHITE_LABEL_PLANS = ["agency", "partner", "enterprise"];
+
+const BASE_LABELS = [
+  "Welcome", "Organization", "License", "AI Model",
+  "Departments", "Agents", "Telegram", "Team", "Complete",
+];
+
+const BRANDING_LABELS = [
+  "Welcome", "Organization", "License", "Branding", "AI Model",
+  "Departments", "Agents", "Telegram", "Team", "Complete",
+];
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [showBranding, setShowBranding] = useState(false);
 
   const checkStatus = useCallback(async () => {
     try {
@@ -39,23 +54,63 @@ export default function OnboardingPage() {
     checkStatus();
   }, [checkStatus]);
 
-  const goToStep = (step: number) => {
-    // Don't allow jumping past the license step (step 3) without completing it
-    if (step > 3 && currentStep <= 3) return;
-    setCurrentStep(step);
+  const totalSteps = showBranding ? 10 : 9;
+  const stepLabels = showBranding ? BRANDING_LABELS : BASE_LABELS;
+
+  // Map logical step positions based on whether branding step is active
+  // With branding: 1-Welcome 2-Org 3-License 4-Branding 5-AI 6-Dept 7-Agents 8-Telegram 9-Team 10-Complete
+  // Without:       1-Welcome 2-Org 3-License 4-AI 5-Dept 6-Agents 7-Telegram 8-Team 9-Complete
+  const step = useMemo(() => {
+    if (!showBranding) {
+      return {
+        welcome: 1, org: 2, license: 3, branding: -1,
+        ai: 4, departments: 5, agents: 6, telegram: 7, team: 8, complete: 9,
+      };
+    }
+    return {
+      welcome: 1, org: 2, license: 3, branding: 4,
+      ai: 5, departments: 6, agents: 7, telegram: 8, team: 9, complete: 10,
+    };
+  }, [showBranding]);
+
+  const goToStep = (s: number) => {
+    if (s > step.license && currentStep <= step.license) return;
+    setCurrentStep(s);
   };
 
   const handleNext = () => {
-    setCurrentStep((prev) => Math.min(prev + 1, 9));
+    setCurrentStep((prev) => Math.min(prev + 1, totalSteps));
   };
 
-  const handleSkip = async (step: number) => {
+  const handleLicenseNext = async () => {
+    // After license activation, check if plan has white_label
     try {
-      await api.onboardingSkip(step);
-      setCurrentStep(step + 1);
+      const plan = await billingApi.getPlan();
+      const planName = plan?.plan?.toLowerCase() || "";
+      if (WHITE_LABEL_PLANS.includes(planName)) {
+        setShowBranding(true);
+        setCurrentStep(4); // branding step
+        return;
+      }
     } catch {
-      setCurrentStep(step + 1);
+      // Ignore — proceed without branding step
     }
+    setShowBranding(false);
+    handleNext();
+  };
+
+  const handleSkip = async (logicalStep: number) => {
+    try {
+      // The backend tracks steps 1-8 regardless of branding insertion
+      // Map our step number back to the backend's step number
+      const backendStep = showBranding && logicalStep > step.branding
+        ? logicalStep - 1
+        : logicalStep;
+      await api.onboardingSkip(backendStep);
+    } catch {
+      // Ignore skip errors
+    }
+    setCurrentStep(logicalStep + 1);
   };
 
   if (loading) {
@@ -71,33 +126,36 @@ export default function OnboardingPage() {
       {/* Stepper header */}
       <div className="border-b border-border bg-background/95 backdrop-blur sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">
-          <Stepper currentStep={currentStep} onStepClick={goToStep} />
+          <Stepper currentStep={currentStep} onStepClick={goToStep} labels={stepLabels} />
         </div>
       </div>
 
       {/* Step content */}
       <div className="flex-1 px-4 py-8">
-        {currentStep === 1 && <WelcomeStep onNext={handleNext} />}
-        {currentStep === 2 && <OrgStep onNext={handleNext} />}
-        {currentStep === 3 && (
-          <LicenseStep onNext={handleNext} />
+        {currentStep === step.welcome && <WelcomeStep onNext={handleNext} />}
+        {currentStep === step.org && <OrgStep onNext={handleNext} />}
+        {currentStep === step.license && (
+          <LicenseStep onNext={handleLicenseNext} />
         )}
-        {currentStep === 4 && (
-          <AIModelStep onNext={handleNext} onSkip={() => handleSkip(4)} />
+        {showBranding && currentStep === step.branding && (
+          <BrandingStep onNext={handleNext} onSkip={() => handleSkip(step.branding)} />
         )}
-        {currentStep === 5 && (
-          <DepartmentsStep onNext={handleNext} onSkip={() => handleSkip(5)} />
+        {currentStep === step.ai && (
+          <AIModelStep onNext={handleNext} onSkip={() => handleSkip(step.ai)} />
         )}
-        {currentStep === 6 && (
-          <AgentsStep onNext={handleNext} onSkip={() => handleSkip(6)} />
+        {currentStep === step.departments && (
+          <DepartmentsStep onNext={handleNext} onSkip={() => handleSkip(step.departments)} />
         )}
-        {currentStep === 7 && (
-          <TelegramStep onNext={handleNext} onSkip={() => handleSkip(7)} />
+        {currentStep === step.agents && (
+          <AgentsStep onNext={handleNext} onSkip={() => handleSkip(step.agents)} />
         )}
-        {currentStep === 8 && (
-          <TeamStep onNext={handleNext} onSkip={() => handleSkip(8)} />
+        {currentStep === step.telegram && (
+          <TelegramStep onNext={handleNext} onSkip={() => handleSkip(step.telegram)} />
         )}
-        {currentStep === 9 && <CompleteStep />}
+        {currentStep === step.team && (
+          <TeamStep onNext={handleNext} onSkip={() => handleSkip(step.team)} />
+        )}
+        {currentStep === step.complete && <CompleteStep />}
       </div>
     </div>
   );

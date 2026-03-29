@@ -39,7 +39,7 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
   nvidia: "https://integrate.api.nvidia.com/v1",
-  kimi_code: "https://api.kimi.com/coding/",
+  kimi_code: "https://api.kimi.com/coding",
   custom: "",
 };
 
@@ -74,6 +74,14 @@ const PROVIDER_NOTES: Record<string, string> = {
   kimi_code: "Requires manual OpenClaw setup via SSH. Use Moonshot for automatic setup.",
 };
 
+const PROVIDER_KEY_PREFIXES: Record<string, string> = {
+  moonshot: "sk-",
+  openai: "sk-",
+  anthropic: "sk-ant-",
+  nvidia: "nvapi-",
+  kimi_code: "sk-kimi-",
+};
+
 const PROVIDERS = ["moonshot", "openai", "anthropic", "nvidia", "kimi_code", "custom"];
 
 export default function AIModelsPage() {
@@ -97,6 +105,7 @@ export default function AIModelsPage() {
   const [formBaseUrl, setFormBaseUrl] = useState("https://api.openai.com/v1");
   const [formApiKey, setFormApiKey] = useState("");
   const [formIsDefault, setFormIsDefault] = useState(false);
+  const [autoSwitchMsg, setAutoSwitchMsg] = useState("");
 
   const fetchModels = useCallback(async () => {
     setLoading(true);
@@ -137,6 +146,7 @@ export default function AIModelsPage() {
     setFormBaseUrl(PROVIDER_BASE_URLS.openai);
     setFormApiKey("");
     setFormIsDefault(false);
+    setAutoSwitchMsg("");
     setDialogOpen(true);
   };
 
@@ -148,6 +158,7 @@ export default function AIModelsPage() {
     setFormBaseUrl(model.base_url);
     setFormApiKey("");
     setFormIsDefault(model.is_default);
+    setAutoSwitchMsg("");
     setDialogOpen(true);
   };
 
@@ -155,6 +166,32 @@ export default function AIModelsPage() {
     setFormProvider(provider);
     setFormBaseUrl(PROVIDER_BASE_URLS[provider] || "");
     setFormModelName("");
+    setAutoSwitchMsg("");
+  };
+
+  const handleFormApiKeyChange = (key: string) => {
+    setFormApiKey(key);
+    setAutoSwitchMsg("");
+    if (!key || formProvider === "custom") return;
+
+    // Collect all matching prefixes grouped by length
+    const matches: { key: string; len: number }[] = [];
+    for (const [pKey, prefix] of Object.entries(PROVIDER_KEY_PREFIXES)) {
+      if (prefix && key.startsWith(prefix)) {
+        matches.push({ key: pKey, len: prefix.length });
+      }
+    }
+    if (matches.length === 0) return;
+
+    // Only auto-switch for unambiguous longest-prefix matches
+    const maxLen = Math.max(...matches.map((m) => m.len));
+    const longest = matches.filter((m) => m.len === maxLen);
+    if (longest.length === 1 && longest[0].key !== formProvider) {
+      setFormProvider(longest[0].key);
+      setFormBaseUrl(PROVIDER_BASE_URLS[longest[0].key] || "");
+      setFormModelName("");
+      setAutoSwitchMsg(`Detected ${PROVIDER_LABELS[longest[0].key]} key — switched provider to ${PROVIDER_LABELS[longest[0].key]}.`);
+    }
   };
 
   const handleSave = async () => {
@@ -431,9 +468,14 @@ export default function AIModelsPage() {
               <Input
                 type="password"
                 value={formApiKey}
-                onChange={(e) => setFormApiKey(e.target.value)}
+                onChange={(e) => handleFormApiKeyChange(e.target.value)}
                 placeholder={editingModel ? "Leave blank to keep current" : "sk-..."}
               />
+              {autoSwitchMsg && (
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                  {autoSwitchMsg}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">

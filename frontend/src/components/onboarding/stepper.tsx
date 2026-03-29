@@ -2,7 +2,7 @@
 
 import { Check } from "lucide-react";
 
-const STEP_LABELS = [
+const DEFAULT_STEP_LABELS = [
   "Welcome",
   "Organization",
   "License",
@@ -17,13 +17,16 @@ const STEP_LABELS = [
 interface StepperProps {
   currentStep: number;
   onStepClick?: (step: number) => void;
+  labels?: string[];
 }
 
-export function Stepper({ currentStep, onStepClick }: StepperProps) {
+export function Stepper({ currentStep, onStepClick, labels }: StepperProps) {
+  const stepLabels = labels || DEFAULT_STEP_LABELS;
+
   return (
     <div className="w-full max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
-        {STEP_LABELS.map((label, idx) => {
+        {stepLabels.map((label, idx) => {
           const step = idx + 1;
           const isCompleted = step < currentStep;
           const isCurrent = step === currentStep;
@@ -52,7 +55,7 @@ export function Stepper({ currentStep, onStepClick }: StepperProps) {
                 >
                   {isCompleted ? <Check className="h-4 w-4" /> : step}
                 </button>
-                {idx < STEP_LABELS.length - 1 && (
+                {idx < stepLabels.length - 1 && (
                   <div
                     className={`flex-1 h-0.5 transition-colors ${
                       step < currentStep ? "bg-primary" : "bg-border"

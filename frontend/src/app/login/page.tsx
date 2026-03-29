@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useBranding } from "@/contexts/BrandingContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +18,7 @@ export default function LoginPage() {
   const [showLoading, setShowLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+  const branding = useBranding();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,16 +52,27 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-600/20 via-background to-background px-4">
       <div className="w-full max-w-sm">
-        {/* HELIX Logo */}
+        {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold tracking-tight">
-            <span className="bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent">
-              HELIX
-            </span>
-          </h1>
+          {branding.logo_url ? (
+            <div className="flex justify-center mb-2">
+              <img src={branding.logo_url} alt={branding.product_name} className="h-10 w-auto" />
+            </div>
+          ) : (
+            <h1 className="text-4xl font-bold tracking-tight">
+              <span className="bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent">
+                {branding.product_short_name}
+              </span>
+            </h1>
+          )}
           <p className="text-sm text-muted-foreground mt-1 tracking-[0.2em] uppercase">
-            Mission Control
+            {branding.login_title}
           </p>
+          {branding.login_subtitle && (
+            <p className="text-xs text-muted-foreground/70 mt-1">
+              {branding.login_subtitle}
+            </p>
+          )}
         </div>
 
         <Card className="border-border/50 shadow-xl">
@@ -97,6 +110,11 @@ export default function LoginPage() {
                   className="h-11"
                 />
               </div>
+              <div className="flex justify-end">
+                <a href="/forgot-password" className="text-sm text-blue-400 hover:text-blue-300">
+                  Forgot password?
+                </a>
+              </div>
               <Button type="submit" className="w-full h-11" disabled={loading}>
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -109,7 +127,7 @@ export default function LoginPage() {
         </Card>
 
         <p className="text-center text-[10px] text-muted-foreground/50 mt-6">
-          Powered by HelixNode
+          {branding.footer_text}
         </p>
       </div>
     </div>

@@ -155,6 +155,34 @@ async def update_user(
     }
 
 
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
+
+
+@router.put("/{user_id}/reset-password")
+async def admin_reset_password(
+    user_id: int,
+    body: AdminResetPasswordRequest,
+    current_user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin resets another user's password."""
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.org_id == current_user.org_id)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters")
+
+    user.password_hash = hash_password(body.new_password)
+    await db.commit()
+
+    return {"message": f"Password reset for {user.email}"}
+
+
 @router.delete("/{user_id}", status_code=204)
 async def delete_user(
     user_id: int,

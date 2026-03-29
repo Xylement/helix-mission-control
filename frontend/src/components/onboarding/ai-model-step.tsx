@@ -41,6 +41,7 @@ export function AIModelStep({ onNext, onSkip }: AIModelStepProps) {
   const [modelName, setModelName] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [autoSwitchMsg, setAutoSwitchMsg] = useState("");
 
   const loadProviders = useCallback(async () => {
     try {
@@ -72,6 +73,34 @@ export function AIModelStep({ onNext, onSkip }: AIModelStepProps) {
       setModelName(p.default_model);
     }
     setTestResult(null);
+  };
+
+  const handleApiKeyChange = (key: string) => {
+    setApiKey(key);
+    setAutoSwitchMsg("");
+    if (!key || Object.keys(providers).length === 0) return;
+
+    // Collect all matching prefixes grouped by length
+    const matches: { key: string; len: number }[] = [];
+    for (const [pKey, pInfo] of Object.entries(providers)) {
+      const prefix = pInfo.key_prefix || "";
+      if (prefix && key.startsWith(prefix)) {
+        matches.push({ key: pKey, len: prefix.length });
+      }
+    }
+    if (matches.length === 0) return;
+
+    // Only auto-switch for unambiguous longest-prefix matches
+    const maxLen = Math.max(...matches.map((m) => m.len));
+    const longest = matches.filter((m) => m.len === maxLen);
+    if (longest.length === 1 && longest[0].key !== provider) {
+      const info = providers[longest[0].key];
+      setProvider(longest[0].key);
+      setBaseUrl(info.base_url);
+      setModelName(info.default_model);
+      setTestResult(null);
+      setAutoSwitchMsg(`Detected ${info.name} key — switched provider to ${info.name}.`);
+    }
   };
 
   const handleTest = async () => {
@@ -206,7 +235,7 @@ export function AIModelStep({ onNext, onSkip }: AIModelStepProps) {
             <Input
               type={showKey ? "text" : "password"}
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => handleApiKeyChange(e.target.value)}
               placeholder={currentProvider?.key_prefix ? `${currentProvider.key_prefix}...` : "sk-..."}
               className="pr-10 font-mono text-sm"
             />
@@ -229,6 +258,11 @@ export function AIModelStep({ onNext, onSkip }: AIModelStepProps) {
           {provider === "kimi_code" && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
               Requires manual OpenClaw setup via SSH. Use Moonshot provider instead for automatic configuration.
+            </p>
+          )}
+          {autoSwitchMsg && (
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+              {autoSwitchMsg}
             </p>
           )}
         </div>

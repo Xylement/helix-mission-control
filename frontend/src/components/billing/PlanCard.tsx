@@ -32,10 +32,22 @@ const PLAN_FEATURES: Record<string, string[]> = {
     "Health monitoring",
     "SLA guarantee",
   ],
+  agency: [
+    "50 AI agents",
+    "25 team members",
+    "Everything in Scale",
+    "White Label branding",
+  ],
+  partner: [
+    "100 AI agents",
+    "50 team members",
+    "Everything in Agency",
+    "Custom plugins",
+  ],
   enterprise: [
     "Unlimited agents",
     "Unlimited members",
-    "Everything in Scale",
+    "Everything in Partner",
     "Custom integrations",
     "Dedicated support",
     "Custom SLA",
@@ -53,12 +65,12 @@ export function PlanCard({ plan, recommended, current, interval, onSelect }: Pla
     <div
       className={cn(
         "relative flex flex-col rounded-xl border p-6 transition-all duration-200",
-        "bg-gray-900/50 hover:bg-gray-900/70",
+        "bg-card hover:bg-accent/30",
         recommended
           ? "border-blue-500/50 shadow-lg shadow-blue-500/20 ring-1 ring-blue-500/30"
           : current
             ? "border-emerald-500/50"
-            : "border-white/10 hover:border-white/20"
+            : "border-border hover:border-border/80"
       )}
     >
       {recommended && (
@@ -79,22 +91,22 @@ export function PlanCard({ plan, recommended, current, interval, onSelect }: Pla
       )}
 
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-white">{tier.name}</h3>
+        <h3 className="text-lg font-semibold">{tier.name}</h3>
         <div className="mt-2">
           {isEnterprise ? (
-            <div className="text-2xl font-bold text-white">Custom</div>
+            <div className="text-2xl font-bold">Custom</div>
           ) : (
             <>
-              <span className="text-3xl font-bold text-white">
+              <span className="text-3xl font-bold">
                 {tier.monthly === 0 ? "Free" : `$${interval === "monthly" ? tier.monthly : tier.annual}`}
               </span>
               {tier.monthly !== 0 && (
-                <span className="text-sm text-gray-400 ml-1">/month</span>
+                <span className="text-sm text-muted-foreground ml-1">/month</span>
               )}
             </>
           )}
           {interval === "annual" && tier.monthly !== 0 && tier.monthly !== null && (
-            <p className="text-xs text-emerald-400 mt-1">
+            <p className="text-xs text-emerald-500 dark:text-emerald-400 mt-1">
               Save ${(tier.monthly - (tier.annual || 0)) * 12}/year
             </p>
           )}
@@ -104,8 +116,8 @@ export function PlanCard({ plan, recommended, current, interval, onSelect }: Pla
       <div className="flex-1 space-y-2.5 mb-6">
         {features.map((feature) => (
           <div key={feature} className="flex items-start gap-2 text-sm">
-            <Check className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
-            <span className="text-gray-300">{feature}</span>
+            <Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400 mt-0.5 shrink-0" />
+            <span className="text-muted-foreground">{feature}</span>
           </div>
         ))}
       </div>

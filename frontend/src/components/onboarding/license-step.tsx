@@ -13,6 +13,7 @@ import {
 } from "@/lib/billing";
 import { Loader2, Zap, KeyRound, ShoppingCart, Check, X } from "lucide-react";
 import { toast } from "sonner";
+import { useBranding } from "@/contexts/BrandingContext";
 
 
 interface LicenseStepProps {
@@ -21,6 +22,7 @@ interface LicenseStepProps {
 }
 
 export function LicenseStep({ onNext }: LicenseStepProps) {
+  const branding = useBranding();
   // Trial state
   const [trialEmail, setTrialEmail] = useState("");
   const [trialOrgName, setTrialOrgName] = useState("");
@@ -107,7 +109,7 @@ export function LicenseStep({ onNext }: LicenseStepProps) {
         </div>
         <h2 className="text-2xl font-bold">Activate Your License</h2>
         <p className="text-muted-foreground text-sm">
-          Choose how you&apos;d like to get started with HELIX
+          Choose how you&apos;d like to get started with {branding.product_short_name}
         </p>
       </div>
 
@@ -121,7 +123,7 @@ export function LicenseStep({ onNext }: LicenseStepProps) {
             <h3 className="font-semibold text-sm">Start 7-Day Free Trial</h3>
           </div>
           <p className="text-xs text-gray-400">
-            Try HELIX with up to 5 agents and 3 team members. No credit card required.
+            Try {branding.product_short_name} with up to 5 agents and 3 team members. No credit card required.
           </p>
           <div className="space-y-2">
             <Input
