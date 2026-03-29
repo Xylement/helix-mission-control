@@ -1,6 +1,6 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
-## Last updated: March 28, 2026 (v1.1.2 release)
+## Last updated: March 29, 2026 (v1.2.0 release)
 
 ---
 
@@ -87,6 +87,10 @@
 
 **license_cache** — id (INTEGER PK, singleton row=1), license_key_prefix, plan, status, max_agents, max_members, features (JSONB), trial (bool), trial_ends_at, current_period_end, grace_period_ends, message, last_validated_at, cached_response (JSONB)
 
+### White Label Tables
+
+**white_label_config** — id (UUID PK), org_id (FK organizations UNIQUE), product_name (VARCHAR 100, default "HELIX Mission Control"), product_short_name (VARCHAR 30, default "HELIX"), company_name (VARCHAR 100, default "HelixNode"), logo_url (TEXT nullable), favicon_url (TEXT nullable), accent_color (VARCHAR 7, default "#3b82f6"), accent_color_secondary (VARCHAR 7, default "#8b5cf6"), login_title (VARCHAR 200, default "Sign in to Mission Control"), login_subtitle (TEXT nullable), footer_text (VARCHAR 200, default "Powered by HelixNode"), loading_animation_enabled (BOOLEAN default true), loading_animation_text (VARCHAR 30, default "HELIX"), custom_css (TEXT nullable), docs_url (TEXT default "https://docs.helixnode.tech"), support_email (VARCHAR 200 nullable), support_url (TEXT nullable), marketplace_visible (BOOLEAN default true), created_at, updated_at
+
 ### Skills Tables
 
 **skills** — id (UUID PK), org_id (FK organizations), name (200), slug (100 unique per org), version (20), description, category (50), tags (TEXT[]), content (TEXT markdown), frontmatter (JSONB), activation_mode (always|board|tag), activation_boards (UUID[]), activation_tags (TEXT[]), created_by (FK users), is_system (bool), marketplace_template_id (100), created_at, updated_at
@@ -171,6 +175,8 @@
 | Model Providers | services/model_providers.py | 6-provider registry (moonshot, openai, anthropic, nvidia, kimi_code, custom) |
 | Permissions | services/permissions.py | Board permission checks, filtering (default-closed model) |
 | Version | services/version_service.py | Read VERSION file, check api.helixnode.tech for updates, 6h cache |
+| White Label | routers/white_label.py | Branding API (6 endpoints), license-gated |
+| Email Templates | services/email_templates.py | Branded transactional emails via Resend |
 | Encryption | utils/encryption.py | Fernet encrypt/decrypt (JWT_SECRET derived) |
 
 ---
@@ -196,6 +202,17 @@
 - Frontend: hides boards/departments with no access, hides create/edit/delete buttons based on permission level
 - Service: `backend/app/services/permissions.py` (check_board_access, filter_boards_by_permission, get_user_accessible_board_ids)
 - Board listing response includes `user_permission` field for frontend UI decisions
+
+---
+
+## 6b. Key Frontend Additions (v1.2.0)
+
+- `contexts/BrandingContext.tsx` — React context for dynamic branding
+- `lib/branding.ts` — Branding fetch + cache
+- `app/settings/white-label/page.tsx` — White label settings
+- `app/forgot-password/page.tsx` — Forgot password form
+- `app/reset-password/page.tsx` — Reset password with token
+- `components/onboarding/branding-step.tsx` — Onboarding branding step
 
 ---
 
@@ -1000,3 +1017,24 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - gateway/entrypoint.sh — kimi_code trailing slash fix
 
 **Key principle:** Production uses GENERATE_CONFIG=false + hardcoded paths (unchanged). Staging/new installs use env vars for path configuration. force=True only runs on explicit user action (settings save, onboarding), never on startup.
+
+### March 29, 2026 — v1.2.0 CODEBASE-CONTEXT Update, Landing Page Link Audit, Batch 8 White Label Docs + Landing Page Section
+
+**CODEBASE-CONTEXT updates:**
+- Header updated to v1.2.0
+- Added white_label_config table to Section 3 (Database Schema)
+- Added White Label and Email Templates services to Section 5
+- Added Section 6b listing key frontend additions (BrandingContext, branding.ts, white-label settings, forgot/reset password, onboarding branding step)
+
+**Landing page link audit (landing/index.html):**
+- All links verified working: footer Docs → docs.helixnode.tech, GitHub → Xylement/helix-mission-control, all anchor links (#demo, #waitlist, #features, #how-it-works, #pricing) have matching IDs, install.sh exists at /var/www/helixnode.tech/install.sh
+- All external URLs verified resolving (200 OK)
+
+**Batch 8 — White Label docs + landing page section:**
+- New docs page: ~/helixnode-docs/billing/white-label.md — overview, features, pricing (Agency/Partner/Enterprise), setup guide, FAQ
+- Updated docs: ~/helixnode-docs/billing/plans.md — added Scale/Agency/Partner tiers, corrected Starter ($49) and Pro ($99) pricing, added white_label feature row, link to white-label page
+- VitePress sidebar: added White Label under Billing section
+- Landing page: added "Rebrand HELIX as Your Own" section between Pricing and Waitlist — feature bullets (full rebrand, your domain, invisible infrastructure, marketplace toggle), pricing cards (Agency $499, Partner $999, Enterprise custom), Contact Us CTA
+- Docs built (~/helixnode-docs/dist/) — needs sudo to deploy to /var/www/docs.helixnode.tech/
+
+**Staging VERSION updated to 1.2.0**
