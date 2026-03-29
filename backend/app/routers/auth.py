@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import uuid
 
@@ -10,10 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.core.security import verify_password, create_access_token, hash_password
+from app.core.security import verify_password, create_access_token, hash_password, create_reset_token, verify_reset_token
 from app.models.user import User
 from app.models.agent import Agent
-from app.schemas.auth import LoginRequest, TokenResponse, UserOut, ProfileUpdate, PasswordChange
+from app.schemas.auth import LoginRequest, TokenResponse, UserOut, ProfileUpdate, PasswordChange, ForgotPasswordRequest, ResetPasswordRequest
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -97,6 +100,64 @@ async def change_password(
     user.password_hash = hash_password(body.new_password)
     await db.commit()
     return {"ok": True, "message": "Password changed successfully"}
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Request password reset. Always returns 200 (don't reveal if email exists)."""
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if user:
+        token = create_reset_token(str(user.id))
+        resend_key = os.getenv("RESEND_API_KEY")
+        if resend_key:
+            base_url = os.getenv("PUBLIC_URL", "").rstrip("/")
+            reset_url = f"{base_url}/reset-password?token={token}"
+            body_html = f"""
+            <h2>Password Reset</h2>
+            <p>You requested a password reset. Click the button below to set a new password.</p>
+            <p style="text-align:center; margin:24px 0;">
+                <a href="{reset_url}" style="background:#3b82f6; color:#fff; padding:12px 24px; border-radius:6px; text-decoration:none; font-weight:600;">
+                    Reset Password
+                </a>
+            </p>
+            <p style="color:#6b7280; font-size:14px;">This link expires in 15 minutes. If you didn't request this, ignore this email.</p>
+            """
+            try:
+                from app.services.email_templates import send_branded_email
+                await send_branded_email(db, user.email, "Password Reset", body_html)
+            except Exception as e:
+                logger.error(f"Failed to send reset email: {e}")
+
+    return {"message": "If an account with that email exists, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    body: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Reset password using a valid reset token."""
+    user_id = verify_reset_token(body.token)
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    result = await db.execute(select(User).where(User.id == int(user_id)))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid reset link")
+
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    user.password_hash = hash_password(body.new_password)
+    await db.commit()
+
+    return {"message": "Password has been reset. You can now log in."}
 
 
 @router.post("/me/avatar", response_model=UserOut)

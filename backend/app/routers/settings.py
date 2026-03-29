@@ -132,7 +132,7 @@ async def update_model_config(
     # Also write to openclaw.json (for fresh installs without .env model config)
     try:
         from app.services.gateway import gateway
-        await gateway.sync_model_config_from_db()
+        await gateway.sync_model_config_from_db(force=True)
     except Exception as e:
         logger.error("Gateway config file sync failed: %s", e)
 
@@ -168,15 +168,38 @@ async def test_model_connection(
     if not base_url:
         raise HTTPException(400, "Base URL required for custom provider")
 
+    # Key prefix mismatch detection — only for unambiguous prefixes
+    # "sk-" is shared by moonshot/openai so we skip it; only unique prefixes trigger
+    if body.provider != "custom":
+        # Collect all matching prefixes and their providers
+        matches: list[tuple[str, int]] = []
+        for pname, pcfg in PROVIDERS.items():
+            p_prefix = pcfg.get("key_prefix", "")
+            if p_prefix and body.api_key.startswith(p_prefix):
+                matches.append((pname, len(p_prefix)))
+        # Find the longest prefix match
+        if matches:
+            max_len = max(m[1] for m in matches)
+            longest = [m[0] for m in matches if m[1] == max_len]
+            # Only suggest if exactly one provider has the longest prefix (unambiguous)
+            if len(longest) == 1 and longest[0] != body.provider:
+                best_cfg = PROVIDERS[longest[0]]
+                return {
+                    "status": "error",
+                    "message": f"This key appears to be for {best_cfg['name']}, not {provider_config['name']}. Please select the correct provider.",
+                }
+
+    models_url = base_url.rstrip("/") + "/models"
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             if body.provider == "anthropic":
-                response = await client.get(f"{base_url}/models", headers={
+                response = await client.get(models_url, headers={
                     "x-api-key": body.api_key,
                     "anthropic-version": "2023-06-01",
                 })
             else:
-                response = await client.get(f"{base_url}/models", headers={
+                response = await client.get(models_url, headers={
                     "Authorization": f"Bearer {body.api_key}"
                 })
 

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { Loader2, Plus, X, SkipForward, Users, Copy, Check } from "lucide-react";
+import { useBranding } from "@/contexts/BrandingContext";
 import { toast } from "sonner";
 
 interface TeamStepProps {
@@ -33,6 +34,7 @@ interface CreatedMember {
 }
 
 export function TeamStep({ onNext, onSkip }: TeamStepProps) {
+  const branding = useBranding();
   const [members, setMembers] = useState<MemberRow[]>([
     { name: "", email: "", role: "member" },
   ]);
@@ -91,7 +93,7 @@ export function TeamStep({ onNext, onSkip }: TeamStepProps) {
         </div>
         <h2 className="text-2xl font-bold">Invite Your Team</h2>
         <p className="text-muted-foreground text-sm">
-          Add team members who will use Mission Control
+          Add team members who will use {branding.product_name}
         </p>
       </div>
 

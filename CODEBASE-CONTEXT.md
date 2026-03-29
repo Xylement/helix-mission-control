@@ -762,3 +762,241 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **Marketplace Fixes:**
 - Added department_pack type support to install_service.py
 - Added actual prompt content to 4 Agent Intelligence skill templates (hn-learning-loop, hn-self-reflection, hn-task-context, hn-feedback-loop)
+
+### March 28, 2026 — White Label Batch 1: Backend Branding Engine
+
+**New table: white_label_config**
+- Stores per-org white label branding configuration
+- Columns: product_name, product_short_name, company_name, logo_url, favicon_url, accent_color, accent_color_secondary, login_title, login_subtitle, footer_text, loading_animation_enabled, loading_animation_text, custom_css, docs_url, support_email, support_url, marketplace_visible
+- One row per org (org_id UNIQUE FK organizations)
+
+**New files:**
+- backend/app/models/white_label.py — SQLAlchemy model WhiteLabelConfig
+- backend/app/schemas/white_label.py — Pydantic schemas (BrandingPublic, WhiteLabelConfigOut, WhiteLabelConfigUpdate)
+- backend/app/routers/white_label.py — 6 API endpoints
+
+**New endpoints:**
+- GET /api/branding — public (no auth), returns branding config with defaults
+- GET /api/settings/white-label — admin only, returns full config for org
+- PUT /api/settings/white-label — admin only, update config (gated to white_label license feature)
+- POST /api/settings/white-label/logo — admin only, upload logo (png/jpg/svg, 2MB max)
+- POST /api/settings/white-label/favicon — admin only, upload favicon (png/ico/svg, 500KB max)
+- GET /api/uploads/branding/{filename} — public, serve uploaded branding assets
+
+**License gating:**
+- LicenseService.has_feature() already existed — checks features list in cached plan
+- PUT/POST write endpoints require features containing "white_label" (returns 403 otherwise)
+- GET endpoints always work (return defaults for non-white-label plans)
+- Currently always returns false since license server doesn't have white_label feature yet (Batch 4)
+
+**Modified files:**
+- backend/app/main.py — registered white_label router, added CREATE TABLE IF NOT EXISTS migration
+
+### March 28, 2026 — White Label Batch 2: Frontend Branding Application
+
+**Goal:** All frontend pages read branding from GET /api/branding instead of hardcoded strings.
+
+**New files:**
+- frontend/src/lib/branding.ts — Branding fetch utility with module-level cache, defaults, invalidation
+- frontend/src/contexts/BrandingContext.tsx — React context provider, useBranding() hook, CSS variable injection, favicon updater, document title updater, custom CSS injection
+
+**Modified files:**
+- frontend/src/app/layout.tsx — Wrapped app with BrandingProvider
+- frontend/src/app/login/page.tsx — Dynamic product name, login title, subtitle, footer, logo
+- frontend/src/components/sidebar.tsx — Dynamic product short name, logo, marketplace visibility toggle
+- frontend/src/components/HelixLoadingScreen.tsx — Dynamic loading animation text, enable/disable support
+- frontend/src/components/onboarding/welcome-step.tsx — Dynamic product name references
+- frontend/src/components/onboarding/complete-step.tsx — Dynamic product name references
+- frontend/src/components/onboarding/license-step.tsx — Dynamic product name references
+- frontend/src/components/onboarding/team-step.tsx — Dynamic product name references
+
+**Branding application:**
+- Login page: logo_url, login_title, login_subtitle, footer_text, product_short_name
+- Sidebar: logo_url, product_short_name, marketplace_visible
+- Loading animation: loading_animation_enabled, loading_animation_text
+- Page titles: document.title suffix updated to branding.product_name
+- Favicon: dynamically set from branding.favicon_url
+- CSS variables: --accent-color, --accent-color-secondary set on document root
+- Custom CSS: injected via style tag from branding.custom_css
+
+**Pattern:** Components use useBranding() hook -> falls back to DEFAULT_BRANDING if API fails -> app never breaks
+
+### March 28, 2026 — White Label Batch 3: Settings UI
+
+**New files:**
+- frontend/src/app/settings/white-label/page.tsx — White label settings page (7 sections: Brand Identity, Colors, Login Page, Loading & Footer, Links & Support, Marketplace, Advanced/Custom CSS)
+
+**Modified files:**
+- frontend/src/components/sidebar.tsx — Added "White Label" (Palette icon) to admin settings nav
+- frontend/src/lib/api.ts — Added WhiteLabelConfig type and 4 API methods (getWhiteLabelSettings, updateWhiteLabelSettings, uploadWhiteLabelLogo, uploadWhiteLabelFavicon)
+
+**License gating:** Page always loads and shows current values. Save/upload returns 403 without white_label license feature. Info banner indicates preview mode.
+
+### March 28, 2026 — White Label Batch 7: Marketplace Isolation
+
+**Backend:** Marketplace browse/discover endpoints return empty results when white_label_config.marketplace_visible = false
+- Install/uninstall endpoints NOT gated (existing installs keep working)
+- Helper: _is_marketplace_visible() checks white_label_config for current org
+- Gated endpoints: templates list, template detail, manifest, categories, featured, reviews, community feed, leaderboard, creators list, creator profile
+
+**Frontend:** Marketplace page shows "not available" message when marketplace_visible = false
+- Sidebar nav item already hidden (Batch 2)
+- Direct URL access shows fallback message with Store icon
+
+**Modified files:**
+- backend/app/routers/marketplace.py — Added _is_marketplace_visible() helper, gated all browse/discover endpoints
+- frontend/src/app/marketplace/page.tsx — Added marketplace_visible guard with fallback UI
+
+### March 28, 2026 — White Label Batch 5: Email Template Branding
+
+**New files:**
+- backend/app/services/email_templates.py — get_email_branding(), render_email_html(), send_branded_email()
+
+**Email service functions:**
+- get_email_branding(db) — reads white_label_config for company_name, product_name, logo_url, accent_color, footer_text, support_email, docs_url; returns defaults if no config
+- render_email_html(subject, body_html, branding) — responsive HTML email with branded header (accent color + logo + company), white body, gray footer; all inline CSS
+- send_branded_email(db, to, subject, body_html) — fetches branding, renders template, sends via Resend API (httpx POST to api.resend.com); from name is dynamic from branding.product_name
+
+**No existing email locations to update** — no Resend calls existed in the codebase yet. Service is ready for future email features.
+
+**Notes:** From email stays noreply@helixnode.tech (FROM_EMAIL env var). Logo in emails requires PUBLIC_URL env var to construct absolute URL. Uses httpx (already a dependency) instead of resend package.
+
+### March 28, 2026 — White Label Batch 4: License + Stripe
+
+**License server (~/helixnode-api/) changes:**
+- New plan tiers: agency (50 agents, 25 members, $499/mo) and partner (100 agents, 50 members, $999/mo)
+- white_label feature flag added to all plans: agency/partner/enterprise = true, starter/pro/scale = false
+- PLANS dict: added agency and partner entries with features lists including "white_label"
+- PLAN_FEATURES dict: added white_label boolean flag for all plan tiers
+- MARKETPLACE_LIMITS dict: added agency and partner entries
+- config.py: added Stripe price env vars for agency/partner (monthly + annual)
+- license_service.py: updated upgrade order to include agency and partner
+- stripe-white-label-products.md: Stripe product creation reference doc
+
+**Mission Control (~/helix-staging/) changes:**
+- billing.ts: added agency/partner to PLAN_TIERS, PLAN_ORDER, FEATURE_MATRIX (white_label), FEATURE_LABELS
+- PlanCard.tsx: added agency/partner feature lists
+- billing/page.tsx: added Agency and Partner plan cards, grid changed to 3-col layout
+
+**Feature flow (end-to-end):**
+- License server returns "white_label" in limits.features list for agency/partner/enterprise
+- MC caches limits.features as JSONB in license_cache.features
+- has_feature("white_label") checks "white_label" in cached features list
+- White label settings page PUT/POST endpoints check has_feature("white_label") — returns 403 without it
+
+**Stripe:** Products must be created manually in Stripe Dashboard, price IDs added to .env
+
+### March 28, 2026 — White Label Batch 6: Onboarding Branding Step
+
+**New file:** frontend/src/components/onboarding/branding-step.tsx
+- Optional onboarding step shown after license activation if license plan is agency/partner/enterprise
+- Quick setup: product name, short name, logo upload, accent color
+- "Skip for now" option — configure later in Settings > White Label
+- Calls PUT /api/settings/white-label + POST logo upload on save, then invalidateBranding()
+
+**Modified files:**
+- frontend/src/app/onboarding/page.tsx — After license step, fetches billing plan; if white_label plan detected, inserts branding step (step 4) and shifts subsequent steps to total 10. Non-white-label plans keep the original 9-step flow.
+- frontend/src/components/onboarding/stepper.tsx — Accepts optional `labels` prop for dynamic step labels (defaults to original 9 labels)
+
+### March 29, 2026 — Password Reset Feature
+
+**New endpoints:**
+- POST /api/auth/forgot-password — public, sends reset email (if Resend configured)
+- POST /api/auth/reset-password — public, reset password with token
+- PUT /api/users/{id}/reset-password — admin only, reset any user's password
+
+**New files:**
+- frontend/src/app/forgot-password/page.tsx — forgot password form
+- frontend/src/app/reset-password/page.tsx — reset password with token
+
+**Modified files:**
+- backend/app/core/security.py — create_reset_token(), verify_reset_token()
+- backend/app/routers/auth.py — forgot-password, reset-password endpoints
+- backend/app/routers/users.py — admin reset-password endpoint
+- backend/app/schemas/auth.py — ForgotPasswordRequest, ResetPasswordRequest, AdminResetPasswordRequest
+- frontend/src/app/login/page.tsx — "Forgot password?" link
+- frontend/src/app/team/page.tsx — admin "Reset Password" action button + dialog
+- frontend/src/lib/api.ts — forgotPassword, resetPassword, adminResetPassword methods
+
+**Password reset flow:**
+1. User clicks "Forgot password?" on login page
+2. Enters email → POST /api/auth/forgot-password
+3. If Resend configured: branded email with reset link (15min expiry JWT)
+4. User clicks link → /reset-password?token=xxx
+5. Enters new password → POST /api/auth/reset-password
+
+**Admin reset flow:**
+- Team page → key icon button → "Reset Password" dialog → enter new password → PUT /api/users/{id}/reset-password
+
+**Change password (pre-existing):**
+- Settings > Profile → "Change Password" section → POST /api/auth/me/change-password
+
+### March 29, 2026 — Kimi/Moonshot Key Prefix Detection + Test Connection Fixes
+
+**Problem:** Onboarding with Moonshot provider + sk-kimi- key returned "Invalid API key" because sk-kimi- keys are for the Kimi Code API (api.kimi.com), not Moonshot (api.moonshot.ai). Also, kimi_code base_url had trailing slash causing double-slash in /models URL.
+
+**Backend — `services/model_providers.py`:**
+- Fixed kimi_code `base_url` from `https://api.kimi.com/coding/` to `https://api.kimi.com/coding` (no trailing slash)
+
+**Backend — `routers/settings.py` — `test_model_connection()`:**
+- Added key prefix mismatch detection before API call. Finds all matching prefixes, picks the longest, and only suggests switching if exactly one provider matches at that length (unambiguous). Example: sk-kimi- (len 9) uniquely matches kimi_code; sk- (len 3) matches both moonshot and openai so no auto-suggestion.
+- Fixed URL construction: `base_url.rstrip("/") + "/models"` prevents double-slash regardless of trailing slash.
+
+**Frontend — `components/onboarding/ai-model-step.tsx`:**
+- Added `handleApiKeyChange` with unambiguous longest-prefix auto-detection across all providers from API response
+- Auto-switches provider, base URL, and default model when key prefix uniquely matches a different provider
+- Shows blue info message on auto-switch (e.g. "Detected Kimi Code (Advanced) key — switched provider to Kimi Code (Advanced).")
+
+**Frontend — `app/settings/models/page.tsx`:**
+- Added `PROVIDER_KEY_PREFIXES` map and `handleFormApiKeyChange` with same unambiguous longest-prefix logic
+- Auto-switches provider in Add/Edit Model dialog when pasting a key
+- Fixed trailing slash in `PROVIDER_BASE_URLS.kimi_code`
+- Shows blue info message below API key field on auto-switch
+
+### March 29, 2026 — Billing Page Light Mode Fix
+
+**Problem:** Billing page had hardcoded dark-mode colors (bg-gray-900, border-white/10, text-gray-400, etc.) that were invisible/ugly in light mode.
+
+**Frontend — `app/settings/billing/page.tsx`:**
+- Replaced all hardcoded dark backgrounds with shadcn/ui semantic tokens: `<Card>` default, `bg-muted`, `bg-card`, `bg-accent/30`, `bg-background`
+- Replaced hardcoded text colors: `text-gray-400/500` → `text-muted-foreground`, `text-white` → `text-foreground`
+- Replaced hardcoded borders: `border-white/10` → `border-border`
+- Usage bar track: `bg-gray-700` → `bg-muted`
+- License key code block: `bg-gray-800/50` → `bg-muted`
+- Feature grid items: theme-aware border/background
+- Interval toggle: `bg-white/10` → `bg-background shadow-sm`
+- White label section: `border-white/[0.06] bg-gray-900/30` → `border-border bg-card`
+- All colored text (emerald, blue, etc.) uses `text-X-500 dark:text-X-400` pattern
+
+**Frontend — `components/billing/PlanCard.tsx`:**
+- Card: `bg-gray-900/50` → `bg-card`, border: `border-white/10` → `border-border`
+- Plan name/price: `text-white` → default foreground
+- Feature text: `text-gray-300` → `text-muted-foreground`
+- Price suffix: `text-gray-400` → `text-muted-foreground`
+
+### March 29, 2026 — Gateway Config Isolation + Sync Fixes
+
+**Problem:** Staging gateway was unreachable (handshake timeout), config sync wrote to production paths, and Docker file mounts had stale inode issues.
+
+**Fixes:**
+
+1. **Configurable OpenClaw config path** — gateway.py now reads from OPENCLAW_CONFIG_PATH env var instead of hardcoded /home/helix/.openclaw/openclaw.json. Enables staging and production to coexist on same host.
+
+2. **Force sync on explicit settings change** — sync_model_config_from_db() accepts force=True parameter. Called from settings.py and onboarding.py when user explicitly saves model config. Bypasses GENERATE_CONFIG and existing-config guards. Startup sync still respects guards (fresh-install-only behavior preserved).
+
+3. **Docker compose staging isolation** — Gateway volume points to ~/.openclaw-staging/, backend mounts full staging directory instead of individual file (avoids inode staleness). GATEWAY_URL defaults to ws://gateway:18789 (Docker network) instead of host.docker.internal.
+
+4. **Compose dir configurable** — gateway_sync.py reads from COMPOSE_PROJECT_DIR env var instead of hardcoded production path.
+
+5. **Kimi Code trailing slash** — gateway/entrypoint.sh fixed kimi_code base URL trailing slash.
+
+**Modified files:**
+- docker-compose.yml — volume mounts, env vars (OPENCLAW_CONFIG_PATH, COMPOSE_PROJECT_DIR)
+- .env — removed GATEWAY_URL override, set GENERATE_CONFIG=true
+- backend/app/services/gateway.py — configurable config path, force parameter
+- backend/app/services/gateway_sync.py — configurable compose dir
+- backend/app/routers/settings.py — force=True on model config save
+- backend/app/routers/onboarding.py — force=True on model config save
+- gateway/entrypoint.sh — kimi_code trailing slash fix
+
+**Key principle:** Production uses GENERATE_CONFIG=false + hardcoded paths (unchanged). Staging/new installs use env vars for path configuration. force=True only runs on explicit user action (settings save, onboarding), never on startup.

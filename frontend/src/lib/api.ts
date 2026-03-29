@@ -61,6 +61,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  forgotPassword: async (email: string): Promise<{ message: string }> => {
+    const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    return res.json();
+  },
+  resetPassword: async (token: string, newPassword: string): Promise<{ message: string }> => {
+    const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || "Failed to reset password");
+    }
+    return res.json();
+  },
+  adminResetPassword: (userId: number, newPassword: string) =>
+    request<{ message: string }>(`/users/${userId}/reset-password`, {
+      method: "PUT",
+      body: JSON.stringify({ new_password: newPassword }),
+    }),
   uploadAvatar: async (file: File): Promise<User> => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const formData = new FormData();
@@ -592,6 +617,42 @@ export const api = {
     request<PluginExecutionResult>(`/plugins/${id}/execute`, { method: "POST", body: JSON.stringify(data) }),
   pluginExecutions: (id: number, limit?: number) =>
     request<PluginExecutionResult[]>(`/plugins/${id}/executions${limit ? `?limit=${limit}` : ""}`),
+
+  // White Label
+  getWhiteLabelSettings: () =>
+    request<WhiteLabelConfig>("/settings/white-label"),
+  updateWhiteLabelSettings: (data: Partial<WhiteLabelConfig>) =>
+    request<WhiteLabelConfig>("/settings/white-label", { method: "PUT", body: JSON.stringify(data) }),
+  uploadWhiteLabelLogo: async (file: File): Promise<{ logo_url: string }> => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_BASE}/api/settings/white-label/logo`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(typeof body.detail === "string" ? body.detail : res.statusText);
+    }
+    return res.json();
+  },
+  uploadWhiteLabelFavicon: async (file: File): Promise<{ favicon_url: string }> => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_BASE}/api/settings/white-label/favicon`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(typeof body.detail === "string" ? body.detail : res.statusText);
+    }
+    return res.json();
+  },
 
   // Backups
   getBackups: (page = 1, perPage = 20) =>
@@ -1485,6 +1546,31 @@ export interface AgentCapabilityItem {
   capability_name: string;
   description: string | null;
   method: string | null;
+}
+
+// White Label types
+export interface WhiteLabelConfig {
+  id: number;
+  org_id: number;
+  product_name: string;
+  product_short_name: string;
+  company_name: string;
+  logo_url: string | null;
+  favicon_url: string | null;
+  accent_color: string;
+  accent_color_secondary: string;
+  login_title: string;
+  login_subtitle: string | null;
+  footer_text: string;
+  loading_animation_enabled: boolean;
+  loading_animation_text: string;
+  custom_css: string | null;
+  docs_url: string;
+  support_email: string | null;
+  support_url: string | null;
+  marketplace_visible: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // Backup types

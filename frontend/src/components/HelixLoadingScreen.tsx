@@ -1,11 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useBranding } from "@/contexts/BrandingContext";
 
 export function HelixLoadingScreen({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState<"letters" | "line" | "tagline" | "fadeout">("letters");
+  const branding = useBranding();
 
   useEffect(() => {
+    if (!branding.loading_animation_enabled) {
+      onComplete();
+      return;
+    }
     const timers = [
       setTimeout(() => setPhase("line"), 800),
       setTimeout(() => setPhase("tagline"), 1400),
@@ -13,9 +19,11 @@ export function HelixLoadingScreen({ onComplete }: { onComplete: () => void }) {
       setTimeout(() => onComplete(), 2800),
     ];
     return () => timers.forEach(clearTimeout);
-  }, [onComplete]);
+  }, [onComplete, branding.loading_animation_enabled]);
 
-  const letters = "HELIX".split("");
+  if (!branding.loading_animation_enabled) return null;
+
+  const letters = branding.loading_animation_text.split("");
 
   return (
     <div
@@ -63,7 +71,7 @@ export function HelixLoadingScreen({ onComplete }: { onComplete: () => void }) {
               : "none",
         }}
       >
-        Mission Control
+        {branding.product_name.replace(branding.loading_animation_text, "").trim() || "Mission Control"}
       </p>
     </div>
   );

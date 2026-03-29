@@ -28,6 +28,7 @@ from app.routers import workflows as workflows_router
 from app.routers import plugins as plugins_router
 from app.routers import backups as backups_router
 from app.routers import version as version_router
+from app.routers import white_label as white_label_router
 from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
@@ -190,6 +191,32 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS backup_retention_days INTEGER DEFAULT 7"
         ))
+        # Create white_label_config table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS white_label_config (
+                id SERIAL PRIMARY KEY,
+                org_id INTEGER NOT NULL UNIQUE REFERENCES organizations(id),
+                product_name VARCHAR(100) DEFAULT 'HELIX Mission Control',
+                product_short_name VARCHAR(30) DEFAULT 'HELIX',
+                company_name VARCHAR(100) DEFAULT 'HelixNode',
+                logo_url TEXT,
+                favicon_url TEXT,
+                accent_color VARCHAR(7) DEFAULT '#3b82f6',
+                accent_color_secondary VARCHAR(7) DEFAULT '#8b5cf6',
+                login_title VARCHAR(200) DEFAULT 'Sign in to Mission Control',
+                login_subtitle TEXT,
+                footer_text VARCHAR(200) DEFAULT 'Powered by HelixNode',
+                loading_animation_enabled BOOLEAN DEFAULT true,
+                loading_animation_text VARCHAR(30) DEFAULT 'HELIX',
+                custom_css TEXT,
+                docs_url TEXT DEFAULT 'https://docs.helixnode.tech',
+                support_email VARCHAR(200),
+                support_url TEXT,
+                marketplace_visible BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """))
     if os.environ.get("SEED_DATA", "").lower() == "true":
         async with async_session() as db:
             await seed_all(db)
@@ -264,6 +291,7 @@ app.include_router(plugins_router.router, prefix="/api")
 app.include_router(plugins_router.agent_plugin_router, prefix="/api")
 app.include_router(backups_router.router, prefix="/api")
 app.include_router(version_router.router, prefix="/api")
+app.include_router(white_label_router.router, prefix="/api")
 app.include_router(websocket_router.router)
 
 

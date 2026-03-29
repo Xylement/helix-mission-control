@@ -29,6 +29,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { CommunitySection } from "@/components/marketplace/CommunitySection";
+import { useBranding } from "@/contexts/BrandingContext";
 
 const TYPE_OPTIONS = [
   { value: "_all", label: "All Types" },
@@ -169,6 +170,7 @@ function SkeletonCard() {
 
 export default function MarketplacePage() {
   const router = useRouter();
+  const branding = useBranding();
 
   const [templates, setTemplates] = useState<MarketplaceTemplateDetail[]>([]);
   const [categories, setCategories] = useState<MarketplaceCategory[]>([]);
@@ -261,6 +263,17 @@ export default function MarketplacePage() {
     setPage(1);
     fetchTemplates(search, typeFilter, next, sort, 1);
   };
+
+  if (!branding.marketplace_visible) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="text-center space-y-2">
+          <Store className="h-10 w-10 text-muted-foreground mx-auto" />
+          <p className="text-muted-foreground">Marketplace is not available.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">

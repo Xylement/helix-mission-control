@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster } from "sonner";
+import { BrandingProvider } from "@/contexts/BrandingContext";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -23,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} font-sans antialiased`}>
-        <Providers>{children}</Providers>
+        <BrandingProvider>
+          <Providers>{children}</Providers>
+        </BrandingProvider>
         <Toaster
           position="top-right"
           richColors

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api, type UserFull, type Board, type Department } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,12 +27,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Trash2, UserPlus, Loader2, Shield, Send } from "lucide-react";
+import { Pencil, Trash2, UserPlus, Loader2, Shield, Send, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { isLimitError, type LimitError } from "@/lib/billing";
 import { UpgradeModal } from "@/components/billing/UpgradeModal";
 
 export default function TeamPage() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserFull[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -51,6 +53,11 @@ export default function TeamPage() {
 
   // Upgrade modal state
   const [upgradeModal, setUpgradeModal] = useState<LimitError | null>(null);
+
+  // Reset Password state
+  const [resetPwdUser, setResetPwdUser] = useState<UserFull | null>(null);
+  const [resetPwdValue, setResetPwdValue] = useState("");
+  const [resetPwdSaving, setResetPwdSaving] = useState(false);
 
   // Board Access state
   const [accessDialogOpen, setAccessDialogOpen] = useState(false);
@@ -144,6 +151,25 @@ export default function TeamPage() {
       fetchUsers();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to delete");
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPwdUser || !resetPwdValue) return;
+    if (resetPwdValue.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setResetPwdSaving(true);
+    try {
+      const result = await api.adminResetPassword(resetPwdUser.id, resetPwdValue);
+      toast.success(result.message);
+      setResetPwdUser(null);
+      setResetPwdValue("");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to reset password");
+    } finally {
+      setResetPwdSaving(false);
     }
   };
 
@@ -303,6 +329,11 @@ export default function TeamPage() {
                       <Button variant="ghost" size="sm" onClick={() => openAccessDialog(user)}>
                         <Shield className="h-4 w-4" />
                       </Button>
+                      {currentUser && currentUser.id !== user.id && (
+                        <Button variant="ghost" size="sm" onClick={() => { setResetPwdUser(user); setResetPwdValue(""); }}>
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" onClick={() => setDeleteConfirm(user)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -453,6 +484,38 @@ export default function TeamPage() {
           upgradeTo={upgradeModal.upgrade_to}
         />
       )}
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!resetPwdUser} onOpenChange={(open) => { if (!open) { setResetPwdUser(null); setResetPwdValue(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5" />
+              Reset Password — {resetPwdUser?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">New Password</label>
+              <Input
+                type="password"
+                value={resetPwdValue}
+                onChange={(e) => setResetPwdValue(e.target.value)}
+                placeholder="Min 6 characters"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => { setResetPwdUser(null); setResetPwdValue(""); }}>
+                Cancel
+              </Button>
+              <Button onClick={handleResetPassword} disabled={resetPwdSaving || !resetPwdValue}>
+                {resetPwdSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Reset Password
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Board Access Dialog */}
       <Dialog open={accessDialogOpen} onOpenChange={setAccessDialogOpen}>

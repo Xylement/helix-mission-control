@@ -9,6 +9,8 @@ export const PLAN_TIERS: Record<string, PlanTier> = {
   starter: { name: "Starter", agents: 5, members: 3, monthly: 49, annual: 42 },
   pro: { name: "Pro", agents: 15, members: 10, monthly: 99, annual: 84 },
   scale: { name: "Scale", agents: 50, members: 25, monthly: 199, annual: 169 },
+  agency: { name: "Agency", agents: 50, members: 25, monthly: 499, annual: 424 },
+  partner: { name: "Partner", agents: 100, members: 50, monthly: 999, annual: 849 },
   enterprise: { name: "Enterprise", agents: Infinity, members: Infinity, monthly: null, annual: null },
 };
 
@@ -34,6 +36,7 @@ export const FEATURE_MATRIX: Record<string, { label: string; minPlan: string }> 
   sla: { label: "SLA Guarantee", minPlan: "scale" },
   custom_integrations: { label: "Custom Integrations", minPlan: "enterprise" },
   plugins: { label: "Plugins", minPlan: "pro" },
+  white_label: { label: "White Label Branding", minPlan: "agency" },
   custom_plugins: { label: "Custom Plugins", minPlan: "enterprise" },
 };
 
@@ -48,12 +51,13 @@ export const FEATURE_LABELS: Record<string, { label: string; description: string
   custom_integrations: { label: "Custom Integrations", description: "Build custom agent integrations" },
   workflow_builder: { label: "Workflow Builder", description: "Create multi-step automated workflows across agents" },
   plugins: { label: "Plugins", description: "Connect agents to external APIs and services" },
+  white_label: { label: "White Label Branding", description: "Custom logos, colors, company name, and login page" },
   custom_plugins: { label: "Custom Plugins", description: "Create and install custom plugin configurations" },
 };
 
 // ─── Plan ordering & comparison ──────────────────────────────────────────────
 
-const PLAN_ORDER = ["trial", "starter", "pro", "scale", "enterprise"];
+const PLAN_ORDER = ["trial", "starter", "pro", "scale", "agency", "partner", "enterprise"];
 
 export function getPlanOrder(): string[] {
   return PLAN_ORDER;

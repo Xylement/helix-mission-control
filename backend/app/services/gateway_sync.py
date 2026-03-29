@@ -78,9 +78,10 @@ async def sync_gateway_config(db: AsyncSession, org_id: int):
 
     # Restart gateway container to pick up new config
     try:
+        compose_dir = os.environ.get("COMPOSE_PROJECT_DIR", "/home/helix/helix-mission-control")
         subprocess.run(
             ["docker", "compose", "restart", "gateway"],
-            cwd="/home/helix/helix-mission-control",
+            cwd=compose_dir,
             timeout=30,
             check=True,
             capture_output=True,

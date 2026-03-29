@@ -56,7 +56,7 @@ PROVIDERS = {
     },
     "kimi_code": {
         "name": "Kimi Code (Advanced)",
-        "base_url": "https://api.kimi.com/coding/",
+        "base_url": "https://api.kimi.com/coding",
         "api_type": "anthropic-messages",
         "key_prefix": "sk-kimi-",
         "default_model": "k2p5",

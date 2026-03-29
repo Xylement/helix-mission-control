@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useBranding } from "@/contexts/BrandingContext";
 import { Sparkles } from "lucide-react";
 
 interface WelcomeStepProps {
@@ -8,6 +9,8 @@ interface WelcomeStepProps {
 }
 
 export function WelcomeStep({ onNext }: WelcomeStepProps) {
+  const branding = useBranding();
+
   return (
     <div className="flex flex-col items-center justify-center text-center space-y-8 py-12">
       <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -16,10 +19,10 @@ export function WelcomeStep({ onNext }: WelcomeStepProps) {
 
       <div className="space-y-3 max-w-lg">
         <h1 className="text-4xl font-bold tracking-tight">
-          Welcome to HELIX
+          Welcome to {branding.product_short_name}
         </h1>
         <h2 className="text-xl text-muted-foreground">
-          Mission Control
+          {branding.product_name.replace(branding.product_short_name, "").trim() || "Mission Control"}
         </h2>
         <p className="text-muted-foreground mt-4">
           Let&apos;s set up your AI-powered workspace. This wizard will guide you through
