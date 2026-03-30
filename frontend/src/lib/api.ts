@@ -694,6 +694,22 @@ export const api = {
     request<void>(`/agents/${agentId}/plugins/${pluginId}`, { method: "DELETE" }),
   agentCapabilities: (agentId: number) =>
     request<AgentCapabilityItem[]>(`/agents/${agentId}/capabilities`),
+
+  // Agent Schedules
+  getAgentSchedules: (agentId: number) =>
+    request<AgentSchedule[]>(`/agents/${agentId}/schedules`),
+  createAgentSchedule: (agentId: number, data: AgentScheduleCreate) =>
+    request<AgentSchedule>(`/agents/${agentId}/schedules`, { method: "POST", body: JSON.stringify(data) }),
+  updateAgentSchedule: (agentId: number, scheduleId: string, data: Partial<AgentScheduleCreate>) =>
+    request<AgentSchedule>(`/agents/${agentId}/schedules/${scheduleId}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteAgentSchedule: (agentId: number, scheduleId: string) =>
+    request<void>(`/agents/${agentId}/schedules/${scheduleId}`, { method: "DELETE" }),
+  toggleAgentSchedule: (agentId: number, scheduleId: string) =>
+    request<AgentSchedule>(`/agents/${agentId}/schedules/${scheduleId}/toggle`, { method: "POST" }),
+  runScheduleNow: (agentId: number, scheduleId: string) =>
+    request<{ task_id: number; message: string }>(`/agents/${agentId}/schedules/${scheduleId}/run-now`, { method: "POST" }),
+  getAllSchedules: () =>
+    request<AgentScheduleWithAgent[]>("/schedules"),
 };
 
 // Types
@@ -1671,4 +1687,49 @@ export interface UpdateHistoryItem {
   message?: string;
   error?: string;
   timestamp: string;
+}
+
+// Agent Schedule types
+export interface AgentSchedule {
+  id: string;
+  org_id: number;
+  agent_id: number;
+  board_id: number;
+  name: string;
+  description: string | null;
+  task_title_template: string;
+  task_prompt: string;
+  schedule_type: "daily" | "weekly" | "monthly" | "interval";
+  schedule_time: string;
+  schedule_days: string[];
+  schedule_interval_minutes: number | null;
+  is_active: boolean;
+  requires_approval: boolean;
+  priority: string;
+  tags: string[];
+  last_run_at: string | null;
+  next_run_at: string | null;
+  run_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AgentScheduleCreate {
+  name: string;
+  description?: string;
+  board_id: number;
+  task_title_template: string;
+  task_prompt: string;
+  schedule_type: string;
+  schedule_time: string;
+  schedule_days?: string[];
+  schedule_interval_minutes?: number;
+  requires_approval?: boolean;
+  priority?: string;
+  tags?: string[];
+}
+
+export interface AgentScheduleWithAgent extends AgentSchedule {
+  agent_name: string;
+  agent_status: string;
 }

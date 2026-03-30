@@ -99,6 +99,10 @@
 
 **skill_attachments** — id (UUID PK), skill_id (FK skills CASCADE), filename, original_filename, description, file_size, mime_type, storage_path, uploaded_by (FK users), uploaded_at
 
+### Schedule Tables
+
+**agent_schedules** — id (UUID PK), org_id (FK organizations), agent_id (FK agents CASCADE), board_id (FK boards CASCADE), name (200), description (TEXT), task_title_template (500), task_prompt (TEXT), schedule_type (daily|weekly|monthly|interval), schedule_time (HH:MM), schedule_days (TEXT[]), schedule_interval_minutes (INT), is_active (bool), requires_approval (bool), priority (20), tags (TEXT[]), last_run_at, next_run_at (indexed WHERE is_active), run_count (INT), retry_count (INT), created_by (FK users), created_at, updated_at
+
 ### AI Model Tables
 
 **ai_models** — id (UUID PK), org_id (FK organizations), provider_name, display_name, api_key_encrypted (Fernet), base_url, models (JSONB), is_default (bool), is_active (bool), created_at, updated_at
@@ -178,6 +182,7 @@
 | White Label | routers/white_label.py | Branding API (6 endpoints), license-gated |
 | Email Templates | services/email_templates.py | Branded transactional emails via Resend |
 | Budget Service | services/budget_service.py | Per-agent token budget enforcement, auto-pause, period reset |
+| Schedule Service | services/schedule_service.py | Recurring task scheduling — calculate next run, execute schedules, background checker |
 | Encryption | utils/encryption.py | Fernet encrypt/decrypt (JWT_SECRET derived) |
 
 ---
@@ -262,6 +267,25 @@ After every Claude Code session that creates/modifies files:
 ---
 
 ## 11. Recent Changes
+
+### March 30, 2026 — Scheduled Recurring Tasks for Agents
+
+**Feature:** Admins can configure recurring schedules on agents that automatically create and dispatch tasks on a cron-like schedule (daily, weekly, monthly, or interval).
+
+**New files:**
+- `backend/app/services/schedule_service.py` — Core scheduling logic: calculate_next_run, format_task_title, execute_schedule, check_and_run_due_schedules
+- `backend/app/routers/schedules.py` — CRUD endpoints for agent schedules (list, create, update, delete, toggle, run-now, list-all)
+- `frontend/src/app/schedules/page.tsx` — Global schedules overview page (admin)
+
+**Modified files:**
+- `backend/app/main.py` — CREATE TABLE agent_schedules migration, periodic_schedule_checker background task (60s), register schedules router
+- `frontend/src/app/agents/[id]/page.tsx` — Added "Schedules" tab with create/edit dialog, toggle, run-now, delete
+- `frontend/src/components/sidebar.tsx` — Added "Schedules" nav item with CalendarClock icon in admin section
+- `frontend/src/lib/api.ts` — Added AgentSchedule types and 7 schedule API methods
+
+**New table:** `agent_schedules` — Stores schedule config, pre-calculated next_run_at (indexed), retry tracking
+
+---
 
 ### March 30, 2026 — Agent Token Budgets with Auto-Pause and Cost Dashboard
 
