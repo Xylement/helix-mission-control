@@ -84,6 +84,10 @@ async def create_delegation(
     if target_agent_id == delegating_agent_id:
         raise ValueError("Agent cannot delegate to itself")
 
+    # Sub-tasks cannot delegate further (depth 1 only)
+    if parent_task.parent_task_id:
+        raise ValueError("Sub-tasks cannot delegate — only root-level tasks may create delegations")
+
     # Check max depth
     depth = await get_delegation_depth(db, parent_task_id)
     if depth >= MAX_DELEGATION_DEPTH:

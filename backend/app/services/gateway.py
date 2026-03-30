@@ -869,8 +869,9 @@ class OpenClawGateway:
                 pass
 
         # Build delegation context — list available agents for delegation
+        # Sub-tasks (tasks with a parent) cannot delegate further
         delegation_context = ""
-        if agent.org_id:
+        if agent.org_id and not task.parent_task_id:
             try:
                 async with async_session() as deleg_db:
                     other_agents = (await deleg_db.execute(
@@ -885,7 +886,10 @@ class OpenClawGateway:
                             agent_lines.append(f"- {oa.name} ({oa.role_title})")
                         delegation_context = (
                             "\n## Delegation\n"
-                            "If this task is too complex for you alone, you can delegate sub-tasks to other agents.\n"
+                            "IMPORTANT: You should complete this task yourself. Only delegate if you genuinely lack "
+                            "the expertise for a specific part AND another specialist agent is available. Most tasks "
+                            "should NOT require delegation. Do your own work first, and only delegate clearly "
+                            "separable sub-components if absolutely necessary.\n\n"
                             "To delegate, include this marker in your response:\n"
                             "[DELEGATE: AgentName | Sub-task Title | Detailed description of what the agent should do]\n\n"
                             "Available agents you can delegate to:\n"
@@ -1016,9 +1020,10 @@ class OpenClawGateway:
             task.updated_at = datetime.now(timezone.utc)
 
             # Parse [DELEGATE:...] markers and store as pending_delegations
+            # Sub-tasks (those with a parent) cannot delegate — ignore markers
             delegation_pattern = r'\[DELEGATE:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]'
             import re as _re
-            delegations = _re.findall(delegation_pattern, result_text)
+            delegations = _re.findall(delegation_pattern, result_text) if not task.parent_task_id else []
             if delegations:
                 pending = []
                 for agent_name, title, desc in delegations:
