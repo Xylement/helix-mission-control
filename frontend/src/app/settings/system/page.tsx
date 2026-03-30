@@ -360,10 +360,10 @@ export default function SystemSettingsPage() {
             <DialogTitle>Update to v{versionInfo?.latest_version}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
               <div className="flex gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-sm text-amber-200/80">
+                <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-700 dark:text-amber-400">
                   The system will be unavailable for ~2 minutes during the update.
                   A rollback will happen automatically if the update fails.
                 </p>
