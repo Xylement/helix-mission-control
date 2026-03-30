@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:16
-    container_name: staging-db
+    container_name: helix-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-helix}
@@ -10,7 +10,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5442:5432"
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-helix} -d ${POSTGRES_DB:-helix_mc}"]
       interval: 5s
@@ -21,10 +21,10 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: staging-redis
+    container_name: helix-redis
     restart: unless-stopped
     ports:
-      - "6389:6379"
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -37,7 +37,7 @@ services:
     build:
       context: ./gateway
       dockerfile: Dockerfile
-    container_name: staging-gateway
+    container_name: helix-gateway
     restart: on-failure:5
     expose:
       - "${GATEWAY_PORT:-18789}"
@@ -57,7 +57,7 @@ services:
       - MC_API_BASE=http://backend:8000
       - MC_SERVICE_TOKEN=${SERVICE_TOKEN}
     volumes:
-      - /home/helix/.openclaw-staging:/home/openclaw/.openclaw
+      - /home/helix/.openclaw:/home/openclaw/.openclaw
     networks:
       - helix-network
     healthcheck:
@@ -76,22 +76,22 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: staging-backend
+    container_name: helix-backend
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8010:8000"
+      - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-helix}:${POSTGRES_PASSWORD:-helix_secret_2024}@db:5432/${POSTGRES_DB:-helix_mc}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - JWT_SECRET=${JWT_SECRET:-helix_jwt_secret_change_me_in_production}
       - ENVIRONMENT=production
-      - OPENCLAW_GATEWAY_URL=ws://gateway:18789
+      - OPENCLAW_GATEWAY_URL=${GATEWAY_URL:-ws://gateway:18789}
       - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
-      - OPENCLAW_CONFIG_PATH=/home/helix/.openclaw-staging/openclaw.json
-      - ENV_FILE_PATH=/home/helix/helix-staging/.env
-      - COMPOSE_PROJECT_DIR=/home/helix/helix-staging
+      - OPENCLAW_CONFIG_PATH=/home/helix/.openclaw/openclaw.json
+      - ENV_FILE_PATH=/home/helix/helix-mission-control/.env
+      - COMPOSE_PROJECT_DIR=/home/helix/helix-mission-control
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - HELIX_SERVICE_TOKEN=${SERVICE_TOKEN}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
@@ -103,7 +103,9 @@ services:
       - LICENSE_SERVER_URL=${LICENSE_SERVER_URL:-https://api.helixnode.tech}
       - LICENSE_KEY=${LICENSE_KEY:-}
     volumes:
-      - /home/helix/.openclaw-staging:/home/helix/.openclaw-staging:rw
+      - /home/helix/.openclaw/workspaces:/home/helix/.openclaw/workspaces
+      - /home/helix/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:rw
+      - /home/helix/.openclaw/identity:/home/helix/.openclaw/identity:ro
       - uploads-data:/data/uploads
       - ./backups:/home/helix/backups
       - ./VERSION:/app/VERSION:ro
@@ -130,10 +132,10 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
-    container_name: staging-frontend
+    container_name: helix-frontend
     restart: unless-stopped
     ports:
-      - "3100:3000"
+      - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-auto}
       - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
@@ -150,7 +152,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
-    container_name: staging-caddy
+    container_name: helix-caddy
     restart: unless-stopped
     profiles:
       - proxy
