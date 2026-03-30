@@ -10,6 +10,7 @@ class TaskStatus(str, Enum):
     REJECTED = "rejected"
     DONE = "done"
     CANCELLED = "cancelled"
+    WAITING = "waiting"
 
 
 class ActorType(str, Enum):
@@ -29,20 +30,22 @@ TRANSITIONS = {
     ActorType.USER: {
         TaskStatus.TODO: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
         TaskStatus.IN_PROGRESS: [TaskStatus.REVIEW, TaskStatus.CANCELLED],
-        TaskStatus.REVIEW: [TaskStatus.APPROVED, TaskStatus.REJECTED, TaskStatus.DONE],
+        TaskStatus.REVIEW: [TaskStatus.APPROVED, TaskStatus.REJECTED, TaskStatus.DONE, TaskStatus.WAITING],
         TaskStatus.APPROVED: [TaskStatus.DONE],
         TaskStatus.REJECTED: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
         TaskStatus.DONE: [],
         TaskStatus.CANCELLED: [TaskStatus.TODO],
+        TaskStatus.WAITING: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
     },
     ActorType.HELIX: {
         TaskStatus.TODO: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
         TaskStatus.IN_PROGRESS: [TaskStatus.REVIEW, TaskStatus.DONE, TaskStatus.CANCELLED],
-        TaskStatus.REVIEW: [TaskStatus.APPROVED, TaskStatus.REJECTED, TaskStatus.DONE],
+        TaskStatus.REVIEW: [TaskStatus.APPROVED, TaskStatus.REJECTED, TaskStatus.DONE, TaskStatus.WAITING],
         TaskStatus.APPROVED: [TaskStatus.DONE],
         TaskStatus.REJECTED: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
         TaskStatus.DONE: [],
         TaskStatus.CANCELLED: [TaskStatus.TODO],
+        TaskStatus.WAITING: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
     },
 }
 

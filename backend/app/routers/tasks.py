@@ -430,6 +430,8 @@ async def update_task(
                         except ValueError as ve:
                             logger.warning("Delegation creation failed: %s", ve)
                     if created_ids:
+                        # Parent waits for sub-tasks instead of going to done
+                        task.status = "waiting"
                         await db.commit()
                         # Auto-dispatch sub-tasks
                         for sub_id in created_ids:
@@ -444,7 +446,7 @@ async def update_task(
                             except Exception as disp_err:
                                 logger.warning("Failed to dispatch delegated sub-task %d: %s", sub_id, disp_err)
                         await db.commit()
-                        logger.info("Created %d delegated sub-tasks from task %d", len(created_ids), task.id)
+                        logger.info("Created %d delegated sub-tasks from task %d, parent set to waiting", len(created_ids), task.id)
             except Exception as deleg_err:
                 logger.error("Delegation hook error for task %d: %s", task.id, deleg_err)
 

@@ -198,7 +198,8 @@ async def get_delegation_tree(db: AsyncSession, task_id: int, org_id: int) -> di
 
 
 async def complete_delegation(db: AsyncSession, task_id: int, org_id: int):
-    """Called when a sub-task reaches 'done' status. Updates delegation_status and parent metadata."""
+    """Called when a sub-task reaches 'done' status. Updates delegation_status and parent metadata.
+    When ALL sub-tasks are done, re-dispatches the parent task with compiled results."""
     task = (await db.execute(
         select(Task).where(Task.id == task_id)
     )).scalar_one_or_none()
@@ -215,16 +216,64 @@ async def complete_delegation(db: AsyncSession, task_id: int, org_id: int):
     all_done = all(s.delegation_status == "completed" for s in siblings)
     if all_done:
         parent = (await db.execute(
-            select(Task).where(Task.id == task.parent_task_id)
+            select(Task)
+            .options(selectinload(Task.assigned_agent))
+            .where(Task.id == task.parent_task_id)
         )).scalar_one_or_none()
         if parent:
+            # Build sub-task results summary
+            result_lines = []
+            for s in siblings:
+                result_preview = (s.result or "No result")[:500]
+                result_lines.append(f"[{s.title}]: {result_preview}")
+            results_summary = "\n\n".join(result_lines)
+
             meta = dict(parent.metadata_ or {})
             meta["all_delegations_completed"] = True
             meta["delegation_results"] = [
                 {"task_id": s.id, "title": s.title, "status": s.status}
                 for s in siblings
             ]
+            # Clear pending_delegations so the agent doesn't re-delegate
+            meta.pop("pending_delegations", None)
             parent.metadata_ = meta
+
+            # Inject sub-task results into the parent description for re-dispatch
+            delegation_results_context = (
+                "\n\n---\nYour delegated sub-tasks are complete. Here are the results:\n\n"
+                + results_summary
+                + "\n\nCompile these into your final response. Do NOT delegate again."
+            )
+            parent.description = (parent.description or "") + delegation_results_context
+            parent.result = None  # Clear previous result so agent produces fresh output
+            parent.status = "in_progress"
+            await db.flush()
+
+            # Re-dispatch parent to its agent via gateway
+            if parent.assigned_agent:
+                try:
+                    from app.services.gateway import gateway
+                    parent.assigned_agent.status = "busy"
+                    await db.commit()
+                    await db.refresh(parent)
+                    await gateway.dispatch_task(parent, parent.assigned_agent)
+                    logger.info(
+                        "Re-dispatched parent task %d to agent %s with compiled sub-task results",
+                        parent.id, parent.assigned_agent.name,
+                    )
+                except Exception as e:
+                    logger.error("Failed to re-dispatch parent task %d: %s", parent.id, e)
+                    # Fallback: leave in in_progress so user can manually handle
+            else:
+                logger.warning("Parent task %d has no assigned agent, cannot re-dispatch", parent.id)
+    else:
+        # Check for failed/cancelled siblings — log warning but keep parent waiting
+        any_failed = any(s.delegation_status == "failed" for s in siblings)
+        if any_failed:
+            logger.warning(
+                "Sub-task %d of parent %d completed, but some siblings have failed delegation status",
+                task_id, task.parent_task_id,
+            )
 
 
 async def get_sub_tasks_count(db: AsyncSession, task_ids: list[int]) -> dict[int, int]:

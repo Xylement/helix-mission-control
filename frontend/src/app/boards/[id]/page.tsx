@@ -70,6 +70,7 @@ const STATUS_COLORS: Record<string, string> = {
   in_progress: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-0",
   review: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0",
   done: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0",
+  waiting: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0",
 };
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -77,6 +78,7 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   in_progress: ["todo", "review"],
   review: ["in_progress", "done"],
   done: [],
+  waiting: ["in_progress"],
 };
 
 function DroppableColumn({
@@ -222,6 +224,15 @@ function DraggableTaskCard({
                 Delegated by {task.delegated_by_agent_name}
               </span>
             )}
+          </div>
+        )}
+
+        {task.status === "waiting" && (
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <span className="inline-flex items-center gap-1 text-[9px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded border border-amber-500/20">
+              <Clock className="h-2.5 w-2.5" />
+              Waiting for {task.sub_tasks_count} sub-task{task.sub_tasks_count !== 1 ? "s" : ""}
+            </span>
           </div>
         )}
 
@@ -874,7 +885,7 @@ export default function BoardPage() {
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4">
           {COLUMNS.map((col) => {
-            const colTasks = tasks.filter((t) => t.status === col.key);
+            const colTasks = tasks.filter((t) => t.status === col.key || (col.key === "in_progress" && t.status === "waiting"));
             return (
               <DroppableColumn
                 key={col.key}
