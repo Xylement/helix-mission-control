@@ -71,6 +71,18 @@ async def periodic_license_check():
             logger.error("Periodic license check failed: %s", e)
 
 
+async def periodic_budget_reset():
+    """Check daily at midnight if any agent budgets should be reset."""
+    while True:
+        await asyncio.sleep(86400)  # 24 hours
+        try:
+            async with async_session() as db:
+                from app.services.budget_service import reset_budgets_if_due
+                await reset_budgets_if_due(db)
+        except Exception as e:
+            logger.error("Budget reset check failed: %s", e)
+
+
 async def periodic_backup_scheduler():
     """Check every hour if an automated backup is due and run it."""
     BACKUP_PLANS = {"pro", "scale", "enterprise", "managed_business", "managed_enterprise"}
@@ -191,6 +203,33 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS backup_retention_days INTEGER DEFAULT 7"
         ))
+        # Add budget columns to agents table
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS monthly_budget_usd DECIMAL(10,2) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS budget_warning_threshold DECIMAL(3,2) DEFAULT 0.80"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS budget_paused BOOLEAN DEFAULT false"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS budget_pause_reason VARCHAR(200) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS budget_reset_day INTEGER DEFAULT 1"
+        ))
+        # Add estimated_cost_usd to token_usage table
+        await conn.execute(text(
+            "ALTER TABLE token_usage ADD COLUMN IF NOT EXISTS estimated_cost_usd DECIMAL(10,6) DEFAULT NULL"
+        ))
+        # Add budget columns to organization_settings
+        await conn.execute(text(
+            "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS default_agent_budget_usd DECIMAL(10,2) DEFAULT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE organization_settings ADD COLUMN IF NOT EXISTS budget_notifications_enabled BOOLEAN DEFAULT true"
+        ))
         # Create white_label_config table
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS white_label_config (
@@ -239,11 +278,13 @@ async def lifespan(app: FastAPI):
     listener_task = asyncio.create_task(redis_listener())
     license_task = asyncio.create_task(periodic_license_check())
     backup_task = asyncio.create_task(periodic_backup_scheduler())
+    budget_task = asyncio.create_task(periodic_budget_reset())
     yield
     # Shutdown
     listener_task.cancel()
     license_task.cancel()
     backup_task.cancel()
+    budget_task.cancel()
     await gateway.stop()
 
 

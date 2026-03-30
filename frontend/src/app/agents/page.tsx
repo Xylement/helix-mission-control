@@ -268,6 +268,17 @@ export default function AgentsPage() {
                       <Badge variant="outline" className="text-[10px] px-2 py-0.5">
                         {agent.execution_mode === "auto" ? "⚡ Auto" : "Manual"}
                       </Badge>
+                      {agent.budget_paused && (
+                        <Badge variant="destructive" className="text-[10px] px-2 py-0.5">
+                          Budget Exceeded
+                        </Badge>
+                      )}
+                      {agent.monthly_budget_usd !== null && !agent.budget_paused && (
+                        <span
+                          className="h-2 w-2 rounded-full bg-emerald-500 inline-block"
+                          title={`Budget: $${agent.monthly_budget_usd}`}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>

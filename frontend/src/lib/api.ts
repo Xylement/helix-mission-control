@@ -231,6 +231,17 @@ export const api = {
   // Dashboard
   dashboardStats: () => request<DashboardStats>("/dashboard/stats"),
   dashboardActivity: () => request<{ activities: DashboardActivity[] }>("/dashboard/activity"),
+  dashboardCosts: () => request<CostDashboard>("/dashboard/costs"),
+
+  // Agent Budget
+  getAgentBudget: (agentId: number) => request<BudgetStatus>(`/agents/${agentId}/budget`),
+  updateAgentBudget: (agentId: number, data: { monthly_budget_usd: number | null; budget_warning_threshold: number; budget_reset_day: number }) =>
+    request<BudgetStatus>(`/agents/${agentId}/budget`, { method: "PUT", body: JSON.stringify(data) }),
+  overrideAgentBudget: (agentId: number, increase?: number) =>
+    request<{ status: string; message: string }>(`/agents/${agentId}/budget/override`, {
+      method: "POST",
+      body: JSON.stringify(increase ? { increase_budget_usd: increase } : {}),
+    }),
 
   // Notifications
   getNotifications: (params?: { read?: boolean; page?: number; per_page?: number }) => {
@@ -724,7 +735,44 @@ export interface Agent {
   status: string;
   execution_mode: string;
   ai_model_id: number | null;
+  monthly_budget_usd: number | null;
+  budget_paused: boolean;
+  budget_pause_reason: string | null;
   created_at: string;
+}
+
+export interface BudgetStatus {
+  budget_usd: number | null;
+  spent_usd: number;
+  remaining_usd: number;
+  percentage: number;
+  warning: boolean;
+  exceeded: boolean;
+  budget_paused: boolean;
+  budget_pause_reason: string | null;
+  reset_day: number;
+  unlimited: boolean;
+}
+
+export interface CostDashboard {
+  total_spend_this_month: number;
+  total_spend_last_month: number;
+  spend_by_agent: Array<{
+    agent_id: number;
+    agent_name: string;
+    spent_usd: number;
+    budget_usd: number | null;
+    percentage: number;
+    budget_paused: boolean;
+  }>;
+  spend_by_day: Array<{ date: string; total_usd: number }>;
+  top_expensive_tasks: Array<{
+    task_id: number;
+    task_title: string;
+    agent_name: string;
+    cost_usd: number;
+    tokens: number;
+  }>;
 }
 
 export interface Task {

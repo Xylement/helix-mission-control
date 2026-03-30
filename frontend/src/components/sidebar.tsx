@@ -33,6 +33,7 @@ import {
   HardDrive,
   Monitor,
   Palette,
+  DollarSign,
 } from "lucide-react";
 import { api, type VersionInfo } from "@/lib/api";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -49,6 +50,7 @@ const navItems = [
 ];
 
 const adminNavItems = [
+  { href: "/costs", label: "Costs", icon: DollarSign },
   { href: "/team", label: "Team", icon: Users },
   { href: "/gateways", label: "Gateways", icon: Radio },
   { href: "/settings/models", label: "AI Models", icon: Brain },

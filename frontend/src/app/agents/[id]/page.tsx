@@ -56,8 +56,16 @@ import {
   Pencil,
   Plug,
   Trash2,
+  DollarSign,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ExportTemplateModal } from "@/components/marketplace/ExportTemplateModal";
 
 const STATUS_BADGE: Record<string, { color: string; label: string }> = {
@@ -696,6 +704,14 @@ export default function AgentDetailPage() {
   const [agentPluginsList, setAgentPluginsList] = useState<AgentPluginItem[]>([]);
   const [allPlugins, setAllPlugins] = useState<InstalledPlugin[]>([]);
 
+  // Budget
+  const [budgetStatus, setBudgetStatus] = useState<import("@/lib/api").BudgetStatus | null>(null);
+  const [showBudgetDialog, setShowBudgetDialog] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
+  const [budgetThreshold, setBudgetThreshold] = useState("80");
+  const [budgetResetDay, setBudgetResetDay] = useState("1");
+  const [savingBudget, setSavingBudget] = useState(false);
+
   // Tab state
   const [activeTab, setActiveTab] = useState<"active" | "history" | "skills" | "plugins">("active");
 
@@ -712,6 +728,8 @@ export default function AgentDetailPage() {
       setStats(statsData);
       setStatusLog(logData);
       setEditPrompt(agentData.system_prompt || "");
+      // Load budget
+      api.getAgentBudget(agentId).then(setBudgetStatus).catch(() => {});
     } catch {
       toast.error("Failed to load agent data");
     } finally {
@@ -1015,6 +1033,163 @@ export default function AgentDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Budget Paused Banner */}
+      {agent.budget_paused && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-red-400">Agent Paused — Budget Exceeded</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{agent.budget_pause_reason}</p>
+            </div>
+          </div>
+          {isAdmin && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-500/30 hover:bg-red-500/20"
+              onClick={async () => {
+                try {
+                  await api.overrideAgentBudget(agentId);
+                  toast.success("Budget override applied");
+                  loadData();
+                } catch { toast.error("Failed to override budget"); }
+              }}
+            >
+              Override & Resume
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Budget Card */}
+      {budgetStatus && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <DollarSign className="h-4 w-4" /> Token Budget
+              </h3>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setBudgetInput(budgetStatus.budget_usd?.toString() || "");
+                    setBudgetThreshold(String(Math.round((budgetStatus.unlimited ? 80 : (budgetStatus.percentage > 0 ? 80 : 80)))));
+                    setBudgetResetDay(String(budgetStatus.reset_day));
+                    setShowBudgetDialog(true);
+                  }}
+                >
+                  {budgetStatus.unlimited ? "Set Budget" : "Edit Budget"}
+                </Button>
+              )}
+            </div>
+            {budgetStatus.unlimited ? (
+              <p className="text-sm text-muted-foreground">No budget set — unlimited spending</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    ${budgetStatus.spent_usd.toFixed(2)} / ${budgetStatus.budget_usd?.toFixed(2)}
+                  </span>
+                  <span className={
+                    budgetStatus.exceeded ? "text-red-400 font-medium" :
+                    budgetStatus.warning ? "text-amber-400 font-medium" :
+                    "text-muted-foreground"
+                  }>
+                    {budgetStatus.percentage.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      budgetStatus.exceeded ? "bg-red-500" :
+                      budgetStatus.warning ? "bg-amber-500" :
+                      "bg-blue-500"
+                    }`}
+                    style={{ width: `${Math.min(100, budgetStatus.percentage)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>${budgetStatus.remaining_usd.toFixed(2)} remaining</span>
+                  <span>Resets on day {budgetStatus.reset_day}</span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Budget Dialog */}
+      <Dialog open={showBudgetDialog} onOpenChange={setShowBudgetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Agent Budget</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-sm font-medium">Monthly Budget (USD)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="e.g. 10.00 (empty = unlimited)"
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(e.target.value)}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Leave empty to remove budget (unlimited).</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Warning Threshold (%)</label>
+              <Input
+                type="number"
+                min="1"
+                max="99"
+                value={budgetThreshold}
+                onChange={(e) => setBudgetThreshold(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Reset Day of Month</label>
+              <Input
+                type="number"
+                min="1"
+                max="28"
+                value={budgetResetDay}
+                onChange={(e) => setBudgetResetDay(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowBudgetDialog(false)}>Cancel</Button>
+              <Button
+                disabled={savingBudget}
+                onClick={async () => {
+                  setSavingBudget(true);
+                  try {
+                    await api.updateAgentBudget(agentId, {
+                      monthly_budget_usd: budgetInput ? parseFloat(budgetInput) : null,
+                      budget_warning_threshold: parseInt(budgetThreshold) / 100,
+                      budget_reset_day: parseInt(budgetResetDay) || 1,
+                    });
+                    toast.success("Budget updated");
+                    setShowBudgetDialog(false);
+                    loadData();
+                  } catch { toast.error("Failed to update budget"); }
+                  finally { setSavingBudget(false); }
+                }}
+              >
+                {savingBudget && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                Save Budget
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Performance Stats Cards */}
       {stats && (

@@ -576,6 +576,8 @@ class OpenClawGateway:
                 if not org_id:
                     return
 
+                from app.services.budget_service import estimate_cost
+                cost = estimate_cost(input_tokens, output_tokens, model_provider or "unknown")
                 usage = TokenUsage(
                     org_id=org_id,
                     agent_id=task.assigned_agent_id,
@@ -584,13 +586,25 @@ class OpenClawGateway:
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     total_tokens=input_tokens + output_tokens,
+                    estimated_cost_usd=cost,
                     task_id=task_id,
                 )
                 db.add(usage)
                 await db.commit()
-                logger.info("Token usage: task=%d agent=%s tokens=%d (%s/%s)",
+                logger.info("Token usage: task=%d agent=%s tokens=%d cost=$%.4f (%s/%s)",
                             task_id, agent_name, input_tokens + output_tokens,
-                            model_provider, model_name)
+                            cost, model_provider, model_name)
+
+                # Post-dispatch budget check — warn or pause if near/over budget
+                if task.assigned_agent_id:
+                    try:
+                        from app.services.budget_service import check_budget, pause_agent_for_budget
+                        budget_status = await check_budget(db, task.assigned_agent_id)
+                        if budget_status.get("exceeded"):
+                            reason = f"Monthly budget of ${budget_status['budget_usd']:.2f} exceeded (${budget_status['spent_usd']:.2f} used)"
+                            await pause_agent_for_budget(db, task.assigned_agent_id, reason)
+                    except Exception as be:
+                        logger.warning("Post-dispatch budget check failed: %s", be)
         except Exception as e:
             logger.warning("Failed to log token usage: %s", e)
 
@@ -611,6 +625,22 @@ class OpenClawGateway:
         """Send a task to an agent via chat.send."""
         if not self.ws or self.ws.state.name != "OPEN":
             raise ConnectionError("Not connected to OpenClaw Gateway")
+
+        # Budget check — block dispatch if agent budget is exceeded
+        if agent.budget_paused:
+            from app.services.budget_service import BudgetExceededError
+            raise BudgetExceededError(
+                agent.budget_pause_reason or f"Agent '{agent.name}' is paused due to budget"
+            )
+
+        if agent.monthly_budget_usd is not None:
+            from app.services.budget_service import check_budget, pause_agent_for_budget, BudgetExceededError
+            async with async_session() as budget_db:
+                budget = await check_budget(budget_db, agent.id)
+                if not budget.get("allowed"):
+                    reason = f"Monthly budget of ${budget['budget_usd']:.2f} exceeded (${budget['spent_usd']:.2f} used)"
+                    await pause_agent_for_budget(budget_db, agent.id, reason)
+                    raise BudgetExceededError(reason)
 
         gw_agent_id = self._agent_id_map.get(agent.name)
         if not gw_agent_id:

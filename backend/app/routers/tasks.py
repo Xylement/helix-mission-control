@@ -21,6 +21,7 @@ from app.services.activity import log_activity
 from app.services.gateway import gateway
 from app.services.notifications import create_notification
 from app.services.task_status import validate_transition, ActorType, TaskStatus
+from app.services.budget_service import BudgetExceededError
 from app.models.board_permission import BoardPermission
 from app.services.permissions import (
     check_board_access,
@@ -452,6 +453,10 @@ async def execute_task(
     try:
         await gateway.dispatch_task(task, agent)
         logger.info("Manual execute: task %d dispatched to agent %s", task.id, agent.name)
+    except BudgetExceededError as e:
+        task.status = "todo"
+        await db.commit()
+        raise HTTPException(status_code=429, detail=f"Agent budget exceeded: {str(e)}")
     except ConnectionError as e:
         task.status = "todo"
         agent.status = "online"
@@ -510,6 +515,10 @@ async def _maybe_auto_dispatch(task: Task, db: AsyncSession, user: User):
             agent.status = "online"
             await db.commit()
             raise
+    except BudgetExceededError as e:
+        task.status = "todo"
+        await db.commit()
+        logger.warning("Agent %s budget exceeded, task %d stays in todo: %s", agent.name, task.id, e)
     except ConnectionError:
         task.status = "todo"
         agent.status = "online"
