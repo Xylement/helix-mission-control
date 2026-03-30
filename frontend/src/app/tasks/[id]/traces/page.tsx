@@ -70,7 +70,17 @@ export default function TaskTracesPage() {
     <div className="space-y-6 animate-in-page max-w-5xl">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => {
+            if (window.history.length > 1) {
+              router.back();
+            } else {
+              router.push(task?.board_id ? `/boards/${task.board_id}` : "/");
+            }
+          }}
+        >
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
