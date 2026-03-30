@@ -8,6 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Loader2,
   Lock,
   Save,
@@ -21,6 +27,7 @@ import {
   AlertTriangle,
   Upload,
   Image,
+  RefreshCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,6 +37,8 @@ export default function WhiteLabelSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const faviconInputRef = useRef<HTMLInputElement>(null);
 
@@ -157,6 +166,27 @@ export default function WhiteLabelSettingsPage() {
     }
   };
 
+  const handleReset = async () => {
+    setResetting(true);
+    try {
+      await api.resetWhiteLabelSettings();
+      invalidateBranding();
+      toast.success("Branding reset to defaults");
+      setShowResetDialog(false);
+      window.location.reload();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err !== null && "detail" in err
+          ? String((err as Record<string, unknown>).detail)
+          : "Failed to reset";
+      toast.error(message);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -189,11 +219,22 @@ export default function WhiteLabelSettingsPage() {
 
   return (
     <div className="animate-in-page p-6 max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">White Label</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Customize branding for your instance
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">White Label</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Customize branding for your instance
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-red-500/30 text-red-500 hover:bg-red-500/10"
+          onClick={() => setShowResetDialog(true)}
+        >
+          <RefreshCcw className="h-4 w-4 mr-2" />
+          Reset to Defaults
+        </Button>
       </div>
 
       {/* Info Banner */}
@@ -560,6 +601,42 @@ export default function WhiteLabelSettingsPage() {
           Save Changes
         </Button>
       </div>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset to Defaults</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
+              <div className="flex gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  Reset all branding to HELIX defaults? This will remove your custom product name, logo, colors, and all other branding customizations.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowResetDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleReset}
+                disabled={resetting}
+              >
+                {resetting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCcw className="h-4 w-4 mr-2" />
+                )}
+                Reset to Defaults
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

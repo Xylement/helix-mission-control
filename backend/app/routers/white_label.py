@@ -14,6 +14,7 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.white_label import WhiteLabelConfig
 from app.schemas.white_label import BrandingPublic, WhiteLabelConfigOut, WhiteLabelConfigUpdate
+from app.services.activity import log_activity
 from app.services.license_service import LicenseService
 
 logger = logging.getLogger("helix.white_label")
@@ -92,6 +93,48 @@ async def update_white_label_settings(
     await db.commit()
     await db.refresh(config)
     return WhiteLabelConfigOut.model_validate(config)
+
+
+@router.post("/settings/white-label/reset")
+async def reset_white_label_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Admin only — reset all white label branding to defaults. Requires white_label license feature."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    svc = LicenseService(db)
+    has_wl = await svc.has_feature("white_label")
+    if not has_wl:
+        raise HTTPException(
+            status_code=403,
+            detail="White label customization requires an Agency or Partner plan. Upgrade at helixnode.tech/pricing",
+        )
+
+    result = await db.execute(
+        select(WhiteLabelConfig).where(WhiteLabelConfig.org_id == current_user.org_id)
+    )
+    config = result.scalar_one_or_none()
+
+    if config:
+        await db.delete(config)
+        await db.commit()
+        logger.info("White label config reset for org %s by user %s", current_user.org_id, current_user.id)
+
+    await log_activity(
+        db,
+        actor_type="user",
+        actor_id=current_user.id,
+        action="white_label.reset",
+        entity_type="organization",
+        entity_id=current_user.org_id,
+        details={"actor_name": current_user.name, "description": "White label branding reset to defaults"},
+        org_id=current_user.org_id,
+    )
+    await db.commit()
+
+    return BrandingPublic()
 
 
 @router.post("/settings/white-label/logo")

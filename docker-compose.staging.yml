@@ -58,7 +58,7 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS:-}
       - GENERATE_CONFIG=true
-      - MC_API_BASE=http://staging-backend:8000
+      - MC_API_BASE=http://host.docker.internal:8010
       - MC_SERVICE_TOKEN=${SERVICE_TOKEN:-}
     volumes:
       - staging_gateway_config:/home/openclaw/.openclaw
@@ -84,16 +84,14 @@ services:
       dockerfile: Dockerfile
     container_name: staging-backend
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "8010:8000"
+    network_mode: host
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010"]
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@staging-db:5432/${POSTGRES_DB:-helix_mc_staging}
-      - REDIS_URL=${REDIS_URL:-redis://staging-redis:6379/0}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@localhost:5435/${POSTGRES_DB:-helix_mc_staging}
+      - REDIS_URL=${REDIS_URL:-redis://localhost:6380/0}
       - JWT_SECRET=${JWT_SECRET}
       - ENVIRONMENT=staging
-      - OPENCLAW_GATEWAY_URL=ws://staging-gateway:18789
+      - OPENCLAW_GATEWAY_URL=ws://localhost:18810
       - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3100,https://staging.helixnode.tech}
       - HELIX_SERVICE_TOKEN=${SERVICE_TOKEN:-}
@@ -116,7 +114,7 @@ services:
       - ./VERSION:/app/VERSION:ro
       - ./data:/app/data
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8010/api/health')\""]
       interval: 30s
       timeout: 10s
       start_period: 30s
@@ -126,10 +124,6 @@ services:
         condition: service_healthy
       staging-redis:
         condition: service_healthy
-      staging-gateway:
-        condition: service_started
-    networks:
-      - helix-staging-network
 
   staging-frontend:
     build:

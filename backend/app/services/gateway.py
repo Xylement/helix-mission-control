@@ -161,14 +161,19 @@ class OpenClawGateway:
                 close_timeout=5,
             )
 
-            # Read and discard the connect.challenge
+            # Read the connect.challenge to get the nonce
             challenge = await asyncio.wait_for(self.ws.recv(), timeout=10)
             data = json.loads(challenge)
             if data.get("event") != "connect.challenge":
                 logger.warning("Unexpected first message: %s", data.get("event"))
+            nonce = data.get("payload", {}).get("nonce", "")
 
-            # Send connect request (direct send/recv, no receive loop yet)
-            # Build connect params with device auth for operator scopes
+            scopes = [
+                "operator.admin", "operator.read", "operator.write",
+                "operator.approvals", "operator.pairing",
+            ]
+
+            # Build connect params with device signature for operator scopes
             connect_params = {
                 "minProtocol": 3,
                 "maxProtocol": 3,
@@ -182,15 +187,15 @@ class OpenClawGateway:
                 "caps": [],
                 "auth": {"token": settings.OPENCLAW_GATEWAY_TOKEN},
                 "role": "operator",
-                "scopes": [
-                    "operator.admin", "operator.read", "operator.write",
-                    "operator.approvals", "operator.pairing",
-                ],
+                "scopes": scopes,
             }
-            # Add device token for operator scope grant
-            device_auth = self._load_device_auth()
-            if device_auth:
-                connect_params["auth"]["deviceToken"] = device_auth["token"]
+
+            # Sign challenge nonce with device identity for scope grants
+            device_block = self._build_device_block(nonce, scopes)
+            if device_block:
+                connect_params["device"] = device_block
+            else:
+                logger.warning("No device identity — connecting without scopes")
 
             connect_resp = await self._send_and_recv("connect", connect_params)
 
@@ -233,22 +238,63 @@ class OpenClawGateway:
                 self.ws = None
             return False
 
-    @staticmethod
-    def _load_device_auth() -> dict | None:
-        """Load device auth token from openclaw identity (grants operator scopes)."""
+    def _build_device_block(self, nonce: str, scopes: list[str]) -> dict | None:
+        """Build signed device block for the connect handshake.
+
+        The gateway verifies a v3 signature over:
+          v3|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce|platform|deviceFamily
+        """
+        import base64
         import os
-        auth_path = "/home/helix/.openclaw/identity/device-auth.json"
-        if not os.path.exists(auth_path):
+        import time
+
+        identity_dir = os.environ.get(
+            "OPENCLAW_IDENTITY_DIR",
+            "/home/helix/.openclaw/identity",
+        )
+        device_path = os.path.join(identity_dir, "device.json")
+        if not os.path.exists(device_path):
             return None
         try:
-            with open(auth_path) as f:
-                auth = json.load(f)
-            operator = auth.get("tokens", {}).get("operator")
-            if operator and operator.get("token"):
-                return operator
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+            with open(device_path) as f:
+                device = json.load(f)
+
+            device_id = device["deviceId"]
+            private_key: Ed25519PrivateKey = serialization.load_pem_private_key(
+                device["privateKeyPem"].encode(), password=None
+            )
+
+            # Raw public key as base64url (no padding)
+            raw_pub = private_key.public_key().public_bytes(
+                serialization.Encoding.Raw, serialization.PublicFormat.Raw
+            )
+            pub_b64url = base64.urlsafe_b64encode(raw_pub).decode().rstrip("=")
+
+            signed_at_ms = int(time.time() * 1000)
+            scopes_str = ",".join(scopes)
+            token = settings.OPENCLAW_GATEWAY_TOKEN or ""
+
+            # v3 payload: pipe-delimited fields
+            payload = "|".join([
+                "v3", device_id, "cli", "cli", "operator", scopes_str,
+                str(signed_at_ms), token, nonce, "linux", "",
+            ])
+            signature = private_key.sign(payload.encode())
+            sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+            return {
+                "id": device_id,
+                "publicKey": pub_b64url,
+                "signature": sig_b64url,
+                "signedAt": signed_at_ms,
+                "nonce": nonce,
+            }
         except Exception as e:
-            logger.warning("Failed to load device auth: %s", e)
-        return None
+            logger.warning("Failed to build device block: %s", e)
+            return None
 
     def _load_agents_from_config(self):
         """Load agent ID map from the openclaw.json config file as fallback."""

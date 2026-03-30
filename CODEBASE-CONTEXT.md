@@ -1,6 +1,6 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
-## Last updated: March 29, 2026 (v1.2.0 release)
+## Last updated: March 30, 2026 (update daemon hardening + white label reset)
 
 ---
 
@@ -179,7 +179,7 @@
 | Model Providers | services/model_providers.py | 6-provider registry (moonshot, openai, anthropic, nvidia, kimi_code, custom) |
 | Permissions | services/permissions.py | Board permission checks, filtering (default-closed model) |
 | Version | services/version_service.py | Read VERSION file, check api.helixnode.tech for updates, 6h cache |
-| White Label | routers/white_label.py | Branding API (6 endpoints), license-gated |
+| White Label | routers/white_label.py | Branding API (7 endpoints), license-gated |
 | Email Templates | services/email_templates.py | Branded transactional emails via Resend |
 | Budget Service | services/budget_service.py | Per-agent token budget enforcement, auto-pause, period reset |
 | Schedule Service | services/schedule_service.py | Recurring task scheduling — calculate next run, execute schedules, background checker |
@@ -696,10 +696,10 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 
 **New files — Mission Control:**
 - `VERSION` — Repo root, contains "1.0.0". Committed to git, mounted read-only into backend container.
-- `backend/app/services/version_service.py` — Reads VERSION file, calls `GET api.helixnode.tech/v1/version/latest`, 6h in-memory cache, semver comparison, reads/writes `.update-trigger`/`.update-result`/`.update-history` files in `data/` directory.
-- `backend/app/routers/version.py` — `GET /api/version` (public: current + latest version, update status), `POST /api/version/check` (admin: force re-check), `POST /api/version/update` (admin: trigger update, requires password confirmation, 1-per-hour rate limit), `GET /api/version/history` (admin: last 10 updates).
-- `update-daemon.sh` — Host-level bash script (systemd service). Polls `data/.update-trigger` every 10s. On trigger: git pull, docker compose up --build, wait 90s, health check (3 attempts). Auto-rollback on failure (git checkout saved commit, rebuild, verify health). Writes JSON results to `data/.update-result` and `data/.update-history`.
-- `frontend/src/app/settings/system/page.tsx` — Settings > System page: current/latest version display, check for updates, update now with password confirmation dialog, progress polling every 15s, update history list with status badges.
+- `backend/app/services/version_service.py` — Reads VERSION file, calls `GET api.helixnode.tech/v1/version/latest`, 6h in-memory cache, semver comparison, reads/writes `.update-trigger`/`.update-result`/`.update-history`/`.update-cancel` files in `data/` directory.
+- `backend/app/routers/version.py` — `GET /api/version` (public: current + latest version, update status with stage/message), `POST /api/version/check` (admin: force re-check), `POST /api/version/update` (admin: trigger update, requires password confirmation, 1-per-hour rate limit), `POST /api/version/cancel` (admin: cancel in-progress update, requires password), `GET /api/version/history` (admin: last 10 updates).
+- `update-daemon.sh` — Host-level bash script (systemd service). Polls `data/.update-trigger` every 10s. On trigger: git pull, docker compose up --build (with 10-minute timeout via `timeout 600`), wait 90s, health check (3 attempts). Auto-rollback on failure or timeout. Writes progress stages (pulling_code → building → starting) to `data/.update-result`. Checks for `data/.update-cancel` file at each stage to support user-initiated cancellation. Writes JSON results to `data/.update-result` and `data/.update-history`.
+- `frontend/src/app/settings/system/page.tsx` — Settings > System page: current/latest version display, check for updates, update now with password confirmation dialog, progress polling every 15s with stage display (Step 1/3, 2/3, 3/3), cancel update button with password confirmation, amber timeout warning after 5 minutes, update history list with status badges (including cancelled status).
 
 **New files — License Server (~/helixnode-api):**
 - `app/routes/version.py` — `GET /v1/version/latest` returns `{ version, release_date, changelog_url, min_version, message }` from env vars `LATEST_HELIX_VERSION` and `LATEST_HELIX_RELEASE_DATE`.
@@ -714,7 +714,7 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `helixnode-api/app/main.py` — Registered version router.
 - `helixnode-api/docker-compose.yml` — Added `LATEST_HELIX_VERSION` and `LATEST_HELIX_RELEASE_DATE` env vars.
 
-**Update flow:** Admin clicks "Update Now" in Settings > System → enters password → backend writes `data/.update-trigger` → host daemon detects trigger → git pull → docker compose up --build → wait 90s → health check → success or auto-rollback → writes result to `data/.update-result` → frontend polls `/api/version` every 15s and shows result.
+**Update flow:** Admin clicks "Update Now" in Settings > System → enters password → backend writes `data/.update-trigger` → host daemon detects trigger → writes progress stages → git pull → docker compose up --build (10min timeout) → wait 90s → health check → success or auto-rollback → writes result to `data/.update-result` → frontend polls `/api/version` every 15s and shows staged progress. Cancel: admin clicks "Cancel Update" → enters password → backend writes `data/.update-cancel` → daemon detects at next stage boundary → aborts and writes cancelled status.
 
 **Systemd service:** `helix-updater.service` — runs `update-daemon.sh` as root, auto-restarts.
 
@@ -840,7 +840,7 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **New files:**
 - backend/app/models/white_label.py — SQLAlchemy model WhiteLabelConfig
 - backend/app/schemas/white_label.py — Pydantic schemas (BrandingPublic, WhiteLabelConfigOut, WhiteLabelConfigUpdate)
-- backend/app/routers/white_label.py — 6 API endpoints
+- backend/app/routers/white_label.py — 7 API endpoints
 
 **New endpoints:**
 - GET /api/branding — public (no auth), returns branding config with defaults
@@ -848,6 +848,7 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - PUT /api/settings/white-label — admin only, update config (gated to white_label license feature)
 - POST /api/settings/white-label/logo — admin only, upload logo (png/jpg/svg, 2MB max)
 - POST /api/settings/white-label/favicon — admin only, upload favicon (png/ico/svg, 500KB max)
+- POST /api/settings/white-label/reset — admin only, reset all branding to defaults (deletes DB row, logs activity)
 - GET /api/uploads/branding/{filename} — public, serve uploaded branding assets
 
 **License gating:**
@@ -1088,3 +1089,17 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Docs built (~/helixnode-docs/dist/) — needs sudo to deploy to /var/www/docs.helixnode.tech/
 
 **Staging VERSION updated to 1.2.0**
+
+### March 30, 2026 — Update Daemon Hardening + White Label Reset
+
+**Part 1: Update Daemon Hardening**
+- `update-daemon.sh` — Added 10-minute build timeout (`timeout 600`), progress stages written to `.update-result` (pulling_code → building → starting), cancel support via `.update-cancel` file checked at each stage
+- `backend/app/routers/version.py` — New `POST /api/version/cancel` endpoint (admin, password confirmation, writes `.update-cancel`)
+- `backend/app/services/version_service.py` — Added `write_cancel_trigger()` and `UPDATE_CANCEL` path constant
+- `frontend/src/app/settings/system/page.tsx` — Progress stage display (Step 1/3, 2/3, 3/3), Cancel Update button with password confirmation dialog, amber warning after 5 minutes, cancelled status badge, light mode warning banner contrast already fixed in prior commit
+- `frontend/src/lib/api.ts` — Added `cancelUpdate()` method, `stage`/`started_at` fields to `UpdateHistoryItem`
+
+**Part 2: White Label Reset to Defaults**
+- `backend/app/routers/white_label.py` — New `POST /api/settings/white-label/reset` endpoint (admin, white_label feature required, deletes DB row, logs activity, returns BrandingPublic defaults)
+- `frontend/src/app/settings/white-label/page.tsx` — "Reset to Defaults" button (red outline, RefreshCcw icon) at top-right, confirmation dialog, calls reset endpoint then reloads page
+- `frontend/src/lib/api.ts` — Added `resetWhiteLabelSettings()` method

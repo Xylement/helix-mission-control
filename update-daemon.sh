@@ -39,7 +39,9 @@ TRIGGER_FILE="${DATA_DIR}/.update-trigger"
 RESULT_FILE="${DATA_DIR}/.update-result"
 HISTORY_FILE="${DATA_DIR}/.update-history"
 PRE_UPDATE_COMMIT="${DATA_DIR}/.pre-update-commit"
+CANCEL_FILE="${DATA_DIR}/.update-cancel"
 POLL_INTERVAL=10
+BUILD_TIMEOUT=600  # 10 minutes
 
 # Ensure data directory exists
 mkdir -p "$DATA_DIR"
@@ -57,6 +59,18 @@ write_result() {
         tail -10 "$HISTORY_FILE" > "${HISTORY_FILE}.tmp"
         mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
     fi
+}
+
+check_cancel() {
+    if [ -f "$CANCEL_FILE" ]; then
+        log "Cancel requested by user"
+        rm -f "$CANCEL_FILE" "$TRIGGER_FILE"
+        local timestamp
+        timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+        write_result "{\"status\":\"cancelled\",\"message\":\"Update cancelled by user\",\"timestamp\":\"${timestamp}\"}"
+        return 0
+    fi
+    return 1
 }
 
 health_check() {
@@ -84,6 +98,7 @@ rollback() {
     timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
     log "ROLLING BACK to commit ${saved_commit}..."
+    write_result "{\"status\":\"rolling_back\",\"version\":\"${target_version}\",\"previous_version\":\"${previous_version}\",\"stage\":\"rolling_back\",\"message\":\"Health check failed, rolling back...\",\"timestamp\":\"${timestamp}\"}"
 
     cd "$REPO_DIR"
     git checkout "$saved_commit" 2>/dev/null
@@ -98,6 +113,7 @@ rollback() {
         log "WARNING: System unhealthy even after rollback"
     fi
 
+    timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     write_result "{\"status\":\"rolled_back\",\"version\":\"${target_version}\",\"previous_version\":\"${previous_version}\",\"message\":\"Update to ${target_version} failed health check. Rolled back to ${previous_version}.\",\"timestamp\":\"${timestamp}\"}"
 }
 
@@ -116,9 +132,12 @@ perform_update() {
     echo "$saved_commit" > "$PRE_UPDATE_COMMIT"
 
     log "Starting update: ${previous_version} -> ${target_version}"
-    write_result "{\"status\":\"in_progress\",\"version\":\"${target_version}\",\"previous_version\":\"${previous_version}\",\"started_at\":\"${timestamp}\"}"
+
+    # Check for cancel before starting
+    if check_cancel; then return 1; fi
 
     # Step 1: git pull
+    write_result "{\"status\":\"in_progress\",\"version\":\"${target_version}\",\"previous_version\":\"${previous_version}\",\"stage\":\"pulling_code\",\"message\":\"Pulling latest code...\",\"started_at\":\"${timestamp}\"}"
     log "Pulling latest code..."
     if ! git pull origin main 2>&1; then
         timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -127,18 +146,36 @@ perform_update() {
         return 1
     fi
 
-    # Step 2: docker compose build + up
-    log "Rebuilding containers..."
-    if ! docker compose up -d --build 2>&1; then
+    # Check for cancel after git pull
+    if check_cancel; then return 1; fi
+
+    # Step 2: docker compose build + up (with timeout)
+    write_result "{\"status\":\"in_progress\",\"version\":\"${target_version}\",\"previous_version\":\"${previous_version}\",\"stage\":\"building\",\"message\":\"Building containers...\",\"started_at\":\"${timestamp}\"}"
+    log "Rebuilding containers (timeout: ${BUILD_TIMEOUT}s)..."
+    if ! timeout "$BUILD_TIMEOUT" docker compose up -d --build 2>&1; then
+        local exit_code=$?
         timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-        log "ERROR: docker compose failed, initiating rollback"
-        rollback "$saved_commit" "$target_version" "$previous_version"
+        if [ "$exit_code" -eq 124 ]; then
+            log "ERROR: Build timed out after ${BUILD_TIMEOUT}s, initiating rollback"
+            write_result "{\"status\":\"failed\",\"version\":\"${target_version}\",\"previous_version\":\"${previous_version}\",\"error\":\"Build timed out after 10 minutes\",\"timestamp\":\"${timestamp}\"}"
+            rollback "$saved_commit" "$target_version" "$previous_version"
+        else
+            log "ERROR: docker compose failed, initiating rollback"
+            rollback "$saved_commit" "$target_version" "$previous_version"
+        fi
         return 1
     fi
 
+    # Check for cancel after build
+    if check_cancel; then return 1; fi
+
     # Step 3: Wait for containers to start
+    write_result "{\"status\":\"in_progress\",\"version\":\"${target_version}\",\"previous_version\":\"${previous_version}\",\"stage\":\"starting\",\"message\":\"Starting services...\",\"started_at\":\"${timestamp}\"}"
     log "Waiting 90s for containers to start..."
     sleep 90
+
+    # Check for cancel after wait
+    if check_cancel; then return 1; fi
 
     # Step 4: Health check
     log "Running health checks..."

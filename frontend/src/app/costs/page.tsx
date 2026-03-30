@@ -10,13 +10,11 @@ import {
   TrendingUp,
   TrendingDown,
   Bot,
-  Zap,
-  AlertTriangle,
   Loader2,
 } from "lucide-react";
 
 export default function CostsPage() {
-  const { user } = useAuth();
+  useAuth();
   const [data, setData] = useState<CostDashboard | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,7 +45,7 @@ export default function CostsPage() {
   const maxDailySpend = Math.max(...data.spend_by_day.map(d => d.total_usd), 0.001);
 
   return (
-    <div className="p-6 space-y-6 animate-in-page">
+    <div className="space-y-6 animate-in-page">
       <div>
         <h1 className="text-2xl font-bold">Cost Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">

@@ -634,6 +634,8 @@ export const api = {
     request<WhiteLabelConfig>("/settings/white-label"),
   updateWhiteLabelSettings: (data: Partial<WhiteLabelConfig>) =>
     request<WhiteLabelConfig>("/settings/white-label", { method: "PUT", body: JSON.stringify(data) }),
+  resetWhiteLabelSettings: () =>
+    request<Partial<WhiteLabelConfig>>("/settings/white-label/reset", { method: "POST" }),
   uploadWhiteLabelLogo: async (file: File): Promise<{ logo_url: string }> => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const form = new FormData();
@@ -684,6 +686,8 @@ export const api = {
   triggerUpdate: (password: string) =>
     request<UpdateTriggerResponse>("/version/update", { method: "POST", body: JSON.stringify({ password }) }),
   getUpdateHistory: () => request<{ updates: UpdateHistoryItem[] }>("/version/history"),
+  cancelUpdate: (password: string) =>
+    request<{ status: string; message: string }>("/version/cancel", { method: "POST", body: JSON.stringify({ password }) }),
 
   // Agent Plugins
   agentPlugins: (agentId: number) =>
@@ -1684,9 +1688,11 @@ export interface UpdateHistoryItem {
   status: string;
   version: string;
   previous_version: string;
+  stage?: string;
   message?: string;
   error?: string;
   timestamp: string;
+  started_at?: string;
 }
 
 // Agent Schedule types
