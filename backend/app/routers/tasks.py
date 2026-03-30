@@ -50,23 +50,31 @@ async def _verify_task_in_org(db: AsyncSession, task_id: int, org_id: int) -> Ta
         select(Task)
         .join(Board, Task.board_id == Board.id)
         .join(Department, Board.department_id == Department.id)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal))
+        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal), selectinload(Task.delegated_by_agent))
         .where(Task.id == task_id, Department.org_id == org_id)
     )
     return result.scalar_one_or_none()
 
 
-async def _attach_traces_counts(db: AsyncSession, tasks: list, org_id: int) -> None:
-    """Attach _traces_count attribute to each task in the list."""
+async def _attach_extra_counts(db: AsyncSession, tasks: list, org_id: int) -> None:
+    """Attach _traces_count and _sub_tasks_count attributes to each task in the list."""
+    task_ids = [t.id for t in tasks]
     try:
         from app.services.trace_service import get_traces_counts_for_tasks
-        task_ids = [t.id for t in tasks]
         counts = await get_traces_counts_for_tasks(db, task_ids, org_id)
         for t in tasks:
             t._traces_count = counts.get(t.id, 0)
     except Exception:
         for t in tasks:
             t._traces_count = 0
+    try:
+        from app.services.delegation_service import get_sub_tasks_count
+        sub_counts = await get_sub_tasks_count(db, task_ids)
+        for t in tasks:
+            t._sub_tasks_count = sub_counts.get(t.id, 0)
+    except Exception:
+        for t in tasks:
+            t._sub_tasks_count = 0
 
 
 async def _filter_tasks_by_board_permission(db: AsyncSession, user, tasks: list) -> list:
@@ -99,7 +107,7 @@ async def search_tasks(
         select(Task)
         .join(Board, Task.board_id == Board.id)
         .join(Department, Board.department_id == Department.id)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal))
+        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal), selectinload(Task.delegated_by_agent))
         .outerjoin(Agent, Task.assigned_agent_id == Agent.id)
         .where(
             Department.org_id == org_id,
@@ -113,7 +121,7 @@ async def search_tasks(
     result = await db.execute(stmt)
     tasks = result.scalars().all()
     tasks = await _filter_tasks_by_board_permission(db, user, tasks)
-    await _attach_traces_counts(db, tasks, org_id)
+    await _attach_extra_counts(db, tasks, org_id)
     return [TaskOut.model_validate(t) for t in tasks]
 
 
@@ -131,7 +139,7 @@ async def list_tasks(
         select(Task)
         .join(Board, Task.board_id == Board.id)
         .join(Department, Board.department_id == Department.id)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal))
+        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal), selectinload(Task.delegated_by_agent))
         .where(Department.org_id == org_id)
         .order_by(Task.created_at.desc())
     )
@@ -148,7 +156,7 @@ async def list_tasks(
     result = await db.execute(q)
     tasks = result.scalars().all()
     tasks = await _filter_tasks_by_board_permission(db, user, tasks)
-    await _attach_traces_counts(db, tasks, org_id)
+    await _attach_extra_counts(db, tasks, org_id)
     return [TaskOut.model_validate(t) for t in tasks]
 
 
@@ -203,7 +211,7 @@ async def create_task(
                 )
 
     await db.commit()
-    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
+    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal", "delegated_by_agent"])
 
     # Recalculate goal progress when task is created with a goal
     if body.goal_id:
@@ -216,7 +224,7 @@ async def create_task(
 
     try:
         await _maybe_auto_dispatch(task, db, user)
-        await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
+        await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal", "delegated_by_agent"])
     except Exception as dispatch_err:
         logger.warning("Auto-dispatch failed for task %d, task saved as todo: %s", task.id, dispatch_err)
 
@@ -240,6 +248,13 @@ async def get_task(
         task._traces_count = await get_traces_count_for_task(db, task_id, org_id)
     except Exception:
         task._traces_count = 0
+    # Attach sub_tasks_count
+    try:
+        from app.services.delegation_service import get_sub_tasks_count
+        counts = await get_sub_tasks_count(db, [task_id])
+        task._sub_tasks_count = counts.get(task_id, 0)
+    except Exception:
+        task._sub_tasks_count = 0
     return TaskOut.model_validate(task)
 
 
@@ -362,7 +377,7 @@ async def update_task(
                 )
 
     await db.commit()
-    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
+    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal", "delegated_by_agent"])
 
     # Workflow engine hook — advance workflow if this task belongs to one
     if "status" in updates:
@@ -377,6 +392,77 @@ async def update_task(
                     await engine.on_task_completed(task.id)
             except Exception as wf_err:
                 logger.error("Workflow hook error for task %d: %s", task.id, wf_err)
+
+    # Delegation hooks
+    if "status" in updates:
+        new_status = updates["status"]
+        # On approval/done: create and dispatch pending delegations
+        if new_status in ("approved", "done"):
+            try:
+                meta = task.metadata_ or {}
+                pending = meta.get("pending_delegations", [])
+                if pending:
+                    from app.services.delegation_service import create_delegation
+                    created_ids = []
+                    for deleg in pending:
+                        # Resolve target agent by name
+                        target = (await db.execute(
+                            select(Agent).where(
+                                Agent.name == deleg["target_agent_name"],
+                                Agent.org_id == org_id,
+                            )
+                        )).scalar_one_or_none()
+                        if not target:
+                            logger.warning("Delegation target agent '%s' not found, skipping", deleg["target_agent_name"])
+                            continue
+                        delegating_agent_id = task.assigned_agent_id or target.id
+                        try:
+                            sub = await create_delegation(
+                                db=db, org_id=org_id,
+                                parent_task_id=task.id,
+                                delegating_agent_id=delegating_agent_id,
+                                target_agent_id=target.id,
+                                title=deleg["title"],
+                                description=deleg["description"],
+                                priority=task.priority,
+                            )
+                            created_ids.append(sub.id)
+                        except ValueError as ve:
+                            logger.warning("Delegation creation failed: %s", ve)
+                    if created_ids:
+                        await db.commit()
+                        # Auto-dispatch sub-tasks
+                        for sub_id in created_ids:
+                            try:
+                                sub_task = (await db.execute(
+                                    select(Task).options(selectinload(Task.assigned_agent))
+                                    .where(Task.id == sub_id)
+                                )).scalar_one_or_none()
+                                if sub_task and sub_task.assigned_agent:
+                                    sub_task.delegation_status = "in_progress"
+                                    await _maybe_auto_dispatch(sub_task, db, user)
+                            except Exception as disp_err:
+                                logger.warning("Failed to dispatch delegated sub-task %d: %s", sub_id, disp_err)
+                        await db.commit()
+                        logger.info("Created %d delegated sub-tasks from task %d", len(created_ids), task.id)
+            except Exception as deleg_err:
+                logger.error("Delegation hook error for task %d: %s", task.id, deleg_err)
+
+        # Sub-task status hooks: update delegation_status
+        if task.parent_task_id:
+            try:
+                if new_status == "done":
+                    from app.services.delegation_service import complete_delegation
+                    await complete_delegation(db, task.id, org_id)
+                    await db.commit()
+                elif new_status == "cancelled":
+                    task.delegation_status = "failed"
+                    await db.commit()
+                elif new_status == "in_progress":
+                    task.delegation_status = "in_progress"
+                    await db.commit()
+            except Exception as ds_err:
+                logger.error("Delegation status hook error for task %d: %s", task.id, ds_err)
 
     # Recalculate goal progress when task status or goal_id changes
     goals_to_recalc = set()
@@ -398,7 +484,7 @@ async def update_task(
 
     if "assigned_agent_id" in updates and updates["assigned_agent_id"]:
         await _maybe_auto_dispatch(task, db, user)
-        await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
+        await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal", "delegated_by_agent"])
 
     return TaskOut.model_validate(task)
 
@@ -523,7 +609,7 @@ async def execute_task(
         await db.commit()
         raise HTTPException(status_code=502, detail=f"Gateway dispatch failed: {str(e)}")
 
-    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
+    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal", "delegated_by_agent"])
     return TaskOut.model_validate(task)
 
 

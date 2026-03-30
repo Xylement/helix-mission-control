@@ -43,9 +43,10 @@ import {
 } from "@/components/ui/collapsible";
 import { TaskResultRenderer } from "@/components/TaskResultRenderer";
 import { TaskAttachments } from "@/components/TaskAttachments";
+import { DelegationTree } from "@/components/delegation-tree";
 import { MentionAutocomplete } from "@/components/mention-autocomplete";
 import {
-  Plus, MessageSquare, Play, Loader2, Zap, Bot, Tag, Columns3,
+  Plus, MessageSquare, Play, Loader2, Zap, Bot, Tag, Columns3, GitBranch,
   Calendar, Clock, User, ChevronDown, ChevronUp, Pencil, Trash2, Check, Archive, X, Target, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -204,6 +205,22 @@ function DraggableTaskCard({
             ))}
             {task.tags.length > 3 && (
               <span className="text-[9px] text-muted-foreground">+{task.tags.length - 3}</span>
+            )}
+          </div>
+        )}
+
+        {(task.sub_tasks_count > 0 || task.parent_task_id) && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {task.sub_tasks_count > 0 && (
+              <span className="inline-flex items-center gap-1 text-[9px] bg-purple-500/10 text-purple-600 px-1.5 py-0.5 rounded border border-purple-500/20">
+                <GitBranch className="h-2.5 w-2.5" />
+                {task.sub_tasks_count} sub-task{task.sub_tasks_count > 1 ? "s" : ""}
+              </span>
+            )}
+            {task.delegated_by_agent_name && (
+              <span className="inline-flex items-center gap-1 text-[9px] bg-blue-500/10 text-blue-600 px-1.5 py-0.5 rounded border border-blue-500/20">
+                Delegated by {task.delegated_by_agent_name}
+              </span>
             )}
           </div>
         )}
@@ -1008,6 +1025,85 @@ export default function BoardPage() {
                           View Execution Trace ({detailTask.traces_count})
                         </Button>
                       </a>
+                    </div>
+                  )}
+
+                  {/* Delegation info — parent task link */}
+                  {detailTask.parent_task_id && (
+                    <div>
+                      <Card>
+                        <CardContent className="p-3 flex items-center gap-2 text-sm">
+                          <GitBranch className="h-4 w-4 text-purple-500" />
+                          <span className="text-muted-foreground">Delegated sub-task</span>
+                          {detailTask.delegated_by_agent_name && (
+                            <span className="text-xs bg-blue-500/10 text-blue-600 px-2 py-0.5 rounded">
+                              by {detailTask.delegated_by_agent_name}
+                            </span>
+                          )}
+                          <button
+                            className="ml-auto text-xs text-primary hover:underline"
+                            onClick={() => {
+                              const parent = tasks.find(t => t.id === detailTask.parent_task_id);
+                              if (parent) setDetailTask(parent);
+                            }}
+                          >
+                            View parent task
+                          </button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+
+                  {/* Delegation tree — sub-tasks */}
+                  {detailTask.sub_tasks_count > 0 && (
+                    <div>
+                      <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                        <GitBranch className="h-3 w-3 inline mr-1" />
+                        Sub-tasks ({detailTask.sub_tasks_count})
+                      </h3>
+                      <Card>
+                        <CardContent className="p-3">
+                          <DelegationTree
+                            taskId={detailTask.id}
+                            onTaskClick={(id) => {
+                              const found = tasks.find(t => t.id === id);
+                              if (found) setDetailTask(found);
+                            }}
+                          />
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+
+                  {/* Pending delegation cards in result */}
+                  {detailTask.result && /\[DELEGATE:/.test(detailTask.result) && (
+                    <div>
+                      <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                        Delegation Requests
+                      </h3>
+                      <div className="space-y-2">
+                        {(detailTask.result.match(/\[DELEGATE:\s*([^\]]+)\]/g) || []).map((marker, i) => {
+                          const parts = marker.replace(/\[DELEGATE:\s*/, "").replace(/\]$/, "").split("|").map(s => s.trim());
+                          return (
+                            <Card key={i} className="border-purple-500/20 bg-purple-500/5">
+                              <CardContent className="p-3 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <GitBranch className="h-4 w-4 text-purple-500" />
+                                  <span className="text-xs font-semibold text-purple-600">Delegation Request</span>
+                                  {detailTask.sub_tasks_count > 0 ? (
+                                    <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-600 border-green-500/20 ml-auto">Dispatched</Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/20 ml-auto">Pending approval</Badge>
+                                  )}
+                                </div>
+                                <div className="text-xs"><span className="text-muted-foreground">To:</span> {parts[0]}</div>
+                                <div className="text-xs font-medium">{parts[1]}</div>
+                                {parts[2] && <div className="text-xs text-muted-foreground">{parts[2]}</div>}
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 

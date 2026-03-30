@@ -32,6 +32,7 @@ from app.routers import backups as backups_router
 from app.routers import version as version_router
 from app.routers import white_label as white_label_router
 from app.routers import traces as traces_router
+from app.routers import delegations as delegations_router
 from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
@@ -392,6 +393,19 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_tasks_goal ON tasks(goal_id)"
         ))
+        # Delegation columns on tasks
+        await conn.execute(text(
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS delegation_status VARCHAR(20)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS delegated_by_agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON tasks(parent_task_id)"
+        ))
     if os.environ.get("SEED_DATA", "").lower() == "true":
         async with async_session() as db:
             await seed_all(db)
@@ -475,6 +489,7 @@ app.include_router(schedules_router.router, prefix="/api")
 app.include_router(goals_router.router, prefix="/api")
 app.include_router(goals_router.task_goal_router, prefix="/api")
 app.include_router(traces_router.router, prefix="/api")
+app.include_router(delegations_router.router, prefix="/api")
 app.include_router(websocket_router.router)
 
 

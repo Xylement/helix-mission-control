@@ -868,8 +868,41 @@ class OpenClawGateway:
             except Exception:
                 pass
 
+        # Build delegation context — list available agents for delegation
+        delegation_context = ""
+        if agent.org_id:
+            try:
+                async with async_session() as deleg_db:
+                    other_agents = (await deleg_db.execute(
+                        select(Agent).where(
+                            Agent.org_id == agent.org_id,
+                            Agent.id != agent.id,
+                        )
+                    )).scalars().all()
+                    if other_agents:
+                        agent_lines = []
+                        for oa in other_agents:
+                            agent_lines.append(f"- {oa.name} ({oa.role_title})")
+                        delegation_context = (
+                            "\n## Delegation\n"
+                            "If this task is too complex for you alone, you can delegate sub-tasks to other agents.\n"
+                            "To delegate, include this marker in your response:\n"
+                            "[DELEGATE: AgentName | Sub-task Title | Detailed description of what the agent should do]\n\n"
+                            "Available agents you can delegate to:\n"
+                            + "\n".join(agent_lines) + "\n\n"
+                            "Rules:\n"
+                            "- Only delegate if the task genuinely requires another specialist\n"
+                            "- You can include multiple [DELEGATE:...] markers\n"
+                            "- Your human reviewer will approve delegations before they execute\n"
+                            "- Continue with your own part of the task in your response\n"
+                        )
+                        logger.info("Injected delegation context (%d agents) into task %d prompt",
+                                    len(other_agents), task.id)
+            except Exception as e:
+                logger.warning("Failed to build delegation context: %s", e)
+
         # Format the task as a chat message
-        prompt = self._build_task_prompt(task, skill_context=skill_context, goal_context=goal_context_str)
+        prompt = self._build_task_prompt(task, skill_context=skill_context, goal_context=goal_context_str, delegation_context=delegation_context)
 
         # Create execution trace (non-blocking)
         trace_id = None
@@ -926,8 +959,8 @@ class OpenClawGateway:
             raise ConnectionError(f"Failed to dispatch: {e}")
 
     @staticmethod
-    def _build_task_prompt(task: Task, *, skill_context: str = "", goal_context: str = "") -> str:
-        """Build a chat prompt from a task, injecting skills, goals, and analytics data."""
+    def _build_task_prompt(task: Task, *, skill_context: str = "", goal_context: str = "", delegation_context: str = "") -> str:
+        """Build a chat prompt from a task, injecting skills, goals, delegation, and analytics data."""
         parts = []
 
         # Inject active skills before the task (agent reads these as domain context)
@@ -943,6 +976,10 @@ class OpenClawGateway:
             parts.append(f"\n{task.description}")
         parts.append(f"\nPriority: {task.priority}")
         parts.append("\nPlease complete this task and provide your result.")
+
+        # Inject delegation instructions
+        if delegation_context:
+            parts.append(delegation_context)
 
         # Inject live analytics data for analytics-related agents
         try:
@@ -977,6 +1014,23 @@ class OpenClawGateway:
             # Fix 3: Agent completion always goes to "review" — never directly to "done"
             task.status = "review"
             task.updated_at = datetime.now(timezone.utc)
+
+            # Parse [DELEGATE:...] markers and store as pending_delegations
+            delegation_pattern = r'\[DELEGATE:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]'
+            import re as _re
+            delegations = _re.findall(delegation_pattern, result_text)
+            if delegations:
+                pending = []
+                for agent_name, title, desc in delegations:
+                    pending.append({
+                        "target_agent_name": agent_name.strip(),
+                        "title": title.strip(),
+                        "description": desc.strip(),
+                    })
+                meta = dict(task.metadata_ or {})
+                meta["pending_delegations"] = pending
+                task.metadata_ = meta
+                logger.info("Task %d has %d pending delegation(s)", task_id, len(pending))
 
             if task.assigned_agent:
                 task.assigned_agent.status = "online"

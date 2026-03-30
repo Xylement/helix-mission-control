@@ -758,6 +758,17 @@ export const api = {
     request<Trace[]>(`/agents/${agentId}/traces${limit ? `?limit=${limit}` : ""}`),
   getTraceStats: (days?: number) =>
     request<TraceStats>(`/traces/stats${days ? `?days=${days}` : ""}`),
+
+  // Delegations
+  createDelegation: (taskId: number, data: DelegationRequest) =>
+    request<Task>(`/tasks/${taskId}/delegate`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getSubTasks: (taskId: number) =>
+    request<Task[]>(`/tasks/${taskId}/subtasks`),
+  getDelegationTree: (taskId: number) =>
+    request<DelegationTreeNode>(`/tasks/${taskId}/delegation-tree`),
 };
 
 // Types
@@ -858,6 +869,11 @@ export interface Task {
   goal_id: number | null;
   goal_title: string | null;
   traces_count: number;
+  parent_task_id: number | null;
+  delegation_status: string | null;
+  delegated_by_agent_id: number | null;
+  delegated_by_agent_name: string | null;
+  sub_tasks_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -1856,4 +1872,19 @@ export interface TraceStats {
   avg_steps: number;
   avg_cost_usd: number;
   avg_duration_ms: number;
+}
+
+// Delegation types
+export interface DelegationRequest {
+  target_agent_id: number;
+  title: string;
+  description: string;
+  priority?: string;
+  board_id?: number;
+  tags?: string[];
+}
+
+export interface DelegationTreeNode {
+  task: Task;
+  sub_tasks: DelegationTreeNode[];
 }

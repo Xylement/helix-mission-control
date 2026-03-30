@@ -59,7 +59,7 @@
 
 **agents** — id (UUID PK), org_id (FK organizations), name (unique per org), role_title, department_id (FK departments), primary_board_id (FK boards), system_prompt, status (online|offline|busy|error), execution_mode (auto|manual), model_provider, model_name, model_api_key_encrypted, ai_model_id (FK ai_models), marketplace_template_slug, monthly_budget_usd (DECIMAL nullable), budget_warning_threshold (DECIMAL default 0.80), budget_paused (bool default false), budget_pause_reason (VARCHAR 200), budget_reset_day (int default 1), last_seen_at, openclaw_session_id, created_at
 
-**tasks** — id (UUID PK), board_id (FK boards), title, description, status (todo|in_progress|review|approved|rejected|done|cancelled), priority (low|medium|high|urgent), assigned_agent_id (FK agents nullable), created_by_user_id (FK users), due_date, requires_approval (bool), approved_by_user_id, approved_at, result (text), tags (TEXT[] DEFAULT '{}'), metadata (JSONB), goal_id (FK goals SET NULL nullable, indexed), archived (bool DEFAULT false), started_at, completed_at, created_at, updated_at
+**tasks** — id (UUID PK), board_id (FK boards), title, description, status (todo|in_progress|review|approved|rejected|done|cancelled), priority (low|medium|high|urgent), assigned_agent_id (FK agents nullable), created_by_user_id (FK users), due_date, requires_approval (bool), approved_by_user_id, approved_at, result (text), tags (TEXT[] DEFAULT '{}'), metadata (JSONB), goal_id (FK goals SET NULL nullable, indexed), archived (bool DEFAULT false), parent_task_id (FK tasks SET NULL nullable, indexed — delegation parent), delegation_status (VARCHAR 20 nullable — pending|in_progress|completed|failed), delegated_by_agent_id (FK agents SET NULL nullable), started_at, completed_at, created_at, updated_at
 
 **comments** — id (UUID PK), task_id (FK tasks), user_id (FK users nullable), agent_id (FK agents nullable), author_type, author_name, content, mentions (JSONB), created_at
 
@@ -195,6 +195,7 @@
 | Goal Service | services/goal_service.py | Goal tree queries (CTE), context injection for prompts, auto-progress calculation |
 | Schedule Service | services/schedule_service.py | Recurring task scheduling — calculate next run, execute schedules, background checker |
 | Trace Service | services/trace_service.py | Execution trace CRUD — create/complete traces, add steps, query by task/agent, org-scoped stats |
+| Delegation Service | services/delegation_service.py | Agent-to-agent delegation — create sub-tasks, delegation tree (recursive CTE), depth/count limits, completion tracking |
 | Encryption | utils/encryption.py | Fernet encrypt/decrypt (JWT_SECRET derived) |
 
 ---
@@ -235,6 +236,8 @@
 - `app/tasks/[id]/traces/page.tsx` — Execution trace viewer (timeline of LLM steps per task)
 - `components/trace-viewer.tsx` — Trace detail component (header + step timeline)
 - `components/trace-step.tsx` — Individual trace step (reasoning, tool_call, tool_result, error, system)
+- `components/delegation-tree.tsx` — Recursive delegation tree viewer (parent → sub-tasks, max 3 levels, click to navigate)
+- `components/delegation-badge.tsx` — Badge component for task cards (sub-task count on parents, "Delegated by" on children)
 
 ---
 
@@ -283,6 +286,28 @@ After every Claude Code session that creates/modifies files:
 ---
 
 ## 11. Recent Changes
+
+### March 30, 2026 — Agent-to-Agent Delegation
+
+**Feature:** Agents can delegate sub-tasks to other specialist agents during task execution. Parent agent includes `[DELEGATE: AgentName | Title | Description]` markers in its response, which are parsed and stored as pending_delegations. Upon human approval, sub-tasks are created and auto-dispatched. Delegation tree shows full parent→child hierarchy (max 3 levels, max 5 sub-tasks per parent).
+
+**New files:**
+- `backend/app/services/delegation_service.py` — Core delegation logic: create_delegation, get_sub_tasks, get_delegation_tree, get_delegation_depth, complete_delegation, get_sub_tasks_count
+- `backend/app/routers/delegations.py` — POST /tasks/{id}/delegate, GET /tasks/{id}/subtasks, GET /tasks/{id}/delegation-tree
+- `frontend/src/components/delegation-tree.tsx` — Recursive tree viewer for delegation hierarchy
+- `frontend/src/components/delegation-badge.tsx` — Badge component for parent/child delegation indicators
+
+**Modified files:**
+- `backend/app/models/task.py` — Added parent_task_id, delegation_status, delegated_by_agent_id columns + parent_task/delegated_by_agent relationships
+- `backend/app/schemas/task.py` — Added delegation fields to TaskOut/TaskCreate, new DelegationRequest and DelegationTreeNode schemas
+- `backend/app/services/gateway.py` — Delegation context injection in dispatch_task() (available agents list), delegation instructions in _build_task_prompt(), [DELEGATE:...] marker parsing in _process_task_result()
+- `backend/app/routers/tasks.py` — Delegation approval hook (create+dispatch sub-tasks on approve/done), delegation_status transitions (completed/failed on sub-task status change), sub_tasks_count in responses, delegated_by_agent eager loading
+- `backend/app/main.py` — ALTER TABLE tasks ADD COLUMN for delegation columns, CREATE INDEX, register delegations router
+- `frontend/src/lib/api.ts` — Added delegation fields to Task type, DelegationRequest/DelegationTreeNode types, createDelegation/getSubTasks/getDelegationTree methods
+- `frontend/src/app/boards/[id]/page.tsx` — Delegation badges on task cards, delegation tree in task detail, styled delegation request cards in result, parent task link on sub-tasks
+- `frontend/src/app/tasks/[id]/traces/page.tsx` — Delegation tree section for tasks with sub-tasks
+
+**Delegation flow:** Agent response → parse [DELEGATE:...] → store pending_delegations in metadata → human reviews → on approve → create_delegation() → auto-dispatch sub-tasks → sub-task completes → delegation_status updated → parent metadata updated when all done.
 
 ### March 30, 2026 — Deep Execution Tracing
 

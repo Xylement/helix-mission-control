@@ -16,7 +16,9 @@ import {
   Layers,
   Loader2,
   ChevronRight,
+  GitBranch,
 } from "lucide-react";
+import { DelegationTree } from "@/components/delegation-tree";
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return "-";
@@ -146,6 +148,23 @@ export default function TaskTracesPage() {
               <TraceViewer traceId={selectedTraceId} />
             </div>
           )}
+        </div>
+      )}
+      {/* Delegation tree for tasks with sub-tasks */}
+      {task && task.sub_tasks_count > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold flex items-center gap-2 mb-3">
+            <GitBranch className="h-4 w-4 text-purple-500" />
+            Delegated Sub-tasks
+          </h2>
+          <Card>
+            <CardContent className="p-4">
+              <DelegationTree
+                taskId={taskId}
+                onTaskClick={(id) => router.push(`/tasks/${id}/traces`)}
+              />
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
