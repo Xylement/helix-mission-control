@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -12,6 +12,7 @@ from app.models.board import Board
 from app.models.department import Department
 from app.models.task import Task
 from app.models.user import User
+from app.models.token_usage import TokenUsage
 from app.services.permissions import get_user_accessible_board_ids
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -209,3 +210,135 @@ async def dashboard_activity(
         })
 
     return {"activities": out}
+
+
+@router.get("/costs")
+async def dashboard_costs(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Org-wide cost dashboard data."""
+    org_id = user.org_id
+    now = datetime.now(timezone.utc)
+    this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if now.month == 1:
+        last_month_start = now.replace(year=now.year - 1, month=12, day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        last_month_start = now.replace(month=now.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Helper to compute cost from a token_usage row
+    cost_expr = func.coalesce(
+        func.sum(TokenUsage.estimated_cost_usd),
+        func.sum((TokenUsage.input_tokens * 1.0 + TokenUsage.output_tokens * 3.0) / 1000000.0),
+        0,
+    )
+
+    # Total spend this month
+    total_this_month = (await db.execute(
+        select(cost_expr).where(
+            TokenUsage.org_id == org_id,
+            TokenUsage.created_at >= this_month_start,
+        )
+    )).scalar() or 0
+
+    # Total spend last month
+    total_last_month = (await db.execute(
+        select(cost_expr).where(
+            TokenUsage.org_id == org_id,
+            TokenUsage.created_at >= last_month_start,
+            TokenUsage.created_at < this_month_start,
+        )
+    )).scalar() or 0
+
+    # Spend by agent
+    agent_spend_result = await db.execute(
+        select(
+            TokenUsage.agent_id,
+            func.coalesce(
+                func.sum(TokenUsage.estimated_cost_usd),
+                func.sum((TokenUsage.input_tokens * 1.0 + TokenUsage.output_tokens * 3.0) / 1000000.0),
+                0,
+            ).label("spent"),
+        ).where(
+            TokenUsage.org_id == org_id,
+            TokenUsage.created_at >= this_month_start,
+            TokenUsage.agent_id.isnot(None),
+        ).group_by(TokenUsage.agent_id)
+    )
+    agent_spend_rows = agent_spend_result.all()
+
+    # Get agent details
+    agent_ids = [r.agent_id for r in agent_spend_rows]
+    agents_map = {}
+    if agent_ids:
+        agents_result = await db.execute(
+            select(Agent).where(Agent.id.in_(agent_ids))
+        )
+        for a in agents_result.scalars().all():
+            agents_map[a.id] = a
+
+    spend_by_agent = []
+    for row in agent_spend_rows:
+        agent = agents_map.get(row.agent_id)
+        budget_usd = float(agent.monthly_budget_usd) if agent and agent.monthly_budget_usd else None
+        spent = float(row.spent)
+        pct = round(spent / budget_usd * 100, 1) if budget_usd and budget_usd > 0 else 0
+        spend_by_agent.append({
+            "agent_id": row.agent_id,
+            "agent_name": agent.name if agent else "Unknown",
+            "spent_usd": round(spent, 4),
+            "budget_usd": budget_usd,
+            "percentage": pct,
+            "budget_paused": agent.budget_paused if agent else False,
+        })
+    spend_by_agent.sort(key=lambda x: x["spent_usd"], reverse=True)
+
+    # Spend by day (last 30 days)
+    thirty_days_ago = now - timedelta(days=30)
+    daily_result = await db.execute(text("""
+        SELECT DATE(created_at) as day,
+               COALESCE(SUM(estimated_cost_usd),
+                        SUM((input_tokens * 1.0 + output_tokens * 3.0) / 1000000.0), 0) as total
+        FROM token_usage
+        WHERE org_id = :org_id AND created_at >= :start
+        GROUP BY DATE(created_at)
+        ORDER BY day
+    """), {"org_id": org_id, "start": thirty_days_ago})
+    spend_by_day = [
+        {"date": str(r.day), "total_usd": round(float(r.total), 4)}
+        for r in daily_result.all()
+    ]
+
+    # Top expensive tasks (top 10 this month)
+    top_tasks_result = await db.execute(text("""
+        SELECT tu.task_id, t.title as task_title,
+               a.name as agent_name,
+               COALESCE(SUM(tu.estimated_cost_usd),
+                        SUM((tu.input_tokens * 1.0 + tu.output_tokens * 3.0) / 1000000.0), 0) as cost,
+               SUM(tu.total_tokens) as tokens
+        FROM token_usage tu
+        LEFT JOIN tasks t ON tu.task_id = t.id
+        LEFT JOIN agents a ON tu.agent_id = a.id
+        WHERE tu.org_id = :org_id AND tu.created_at >= :start AND tu.task_id IS NOT NULL
+        GROUP BY tu.task_id, t.title, a.name
+        ORDER BY cost DESC
+        LIMIT 10
+    """), {"org_id": org_id, "start": this_month_start})
+    top_expensive_tasks = [
+        {
+            "task_id": r.task_id,
+            "task_title": r.task_title or f"Task #{r.task_id}",
+            "agent_name": r.agent_name or "Unknown",
+            "cost_usd": round(float(r.cost), 4),
+            "tokens": int(r.tokens),
+        }
+        for r in top_tasks_result.all()
+    ]
+
+    return {
+        "total_spend_this_month": round(float(total_this_month), 4),
+        "total_spend_last_month": round(float(total_last_month), 4),
+        "spend_by_agent": spend_by_agent,
+        "spend_by_day": spend_by_day,
+        "top_expensive_tasks": top_expensive_tasks,
+    }

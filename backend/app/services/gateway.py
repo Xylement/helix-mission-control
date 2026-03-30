@@ -161,14 +161,19 @@ class OpenClawGateway:
                 close_timeout=5,
             )
 
-            # Read and discard the connect.challenge
+            # Read the connect.challenge to get the nonce
             challenge = await asyncio.wait_for(self.ws.recv(), timeout=10)
             data = json.loads(challenge)
             if data.get("event") != "connect.challenge":
                 logger.warning("Unexpected first message: %s", data.get("event"))
+            nonce = data.get("payload", {}).get("nonce", "")
 
-            # Send connect request (direct send/recv, no receive loop yet)
-            # Build connect params with device auth for operator scopes
+            scopes = [
+                "operator.admin", "operator.read", "operator.write",
+                "operator.approvals", "operator.pairing",
+            ]
+
+            # Build connect params with device signature for operator scopes
             connect_params = {
                 "minProtocol": 3,
                 "maxProtocol": 3,
@@ -182,15 +187,15 @@ class OpenClawGateway:
                 "caps": [],
                 "auth": {"token": settings.OPENCLAW_GATEWAY_TOKEN},
                 "role": "operator",
-                "scopes": [
-                    "operator.admin", "operator.read", "operator.write",
-                    "operator.approvals", "operator.pairing",
-                ],
+                "scopes": scopes,
             }
-            # Add device token for operator scope grant
-            device_auth = self._load_device_auth()
-            if device_auth:
-                connect_params["auth"]["deviceToken"] = device_auth["token"]
+
+            # Sign challenge nonce with device identity for scope grants
+            device_block = self._build_device_block(nonce, scopes)
+            if device_block:
+                connect_params["device"] = device_block
+            else:
+                logger.warning("No device identity — connecting without scopes")
 
             connect_resp = await self._send_and_recv("connect", connect_params)
 
@@ -233,22 +238,63 @@ class OpenClawGateway:
                 self.ws = None
             return False
 
-    @staticmethod
-    def _load_device_auth() -> dict | None:
-        """Load device auth token from openclaw identity (grants operator scopes)."""
+    def _build_device_block(self, nonce: str, scopes: list[str]) -> dict | None:
+        """Build signed device block for the connect handshake.
+
+        The gateway verifies a v3 signature over:
+          v3|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce|platform|deviceFamily
+        """
+        import base64
         import os
-        auth_path = "/home/helix/.openclaw/identity/device-auth.json"
-        if not os.path.exists(auth_path):
+        import time
+
+        identity_dir = os.environ.get(
+            "OPENCLAW_IDENTITY_DIR",
+            "/home/helix/.openclaw/identity",
+        )
+        device_path = os.path.join(identity_dir, "device.json")
+        if not os.path.exists(device_path):
             return None
         try:
-            with open(auth_path) as f:
-                auth = json.load(f)
-            operator = auth.get("tokens", {}).get("operator")
-            if operator and operator.get("token"):
-                return operator
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+            with open(device_path) as f:
+                device = json.load(f)
+
+            device_id = device["deviceId"]
+            private_key: Ed25519PrivateKey = serialization.load_pem_private_key(
+                device["privateKeyPem"].encode(), password=None
+            )
+
+            # Raw public key as base64url (no padding)
+            raw_pub = private_key.public_key().public_bytes(
+                serialization.Encoding.Raw, serialization.PublicFormat.Raw
+            )
+            pub_b64url = base64.urlsafe_b64encode(raw_pub).decode().rstrip("=")
+
+            signed_at_ms = int(time.time() * 1000)
+            scopes_str = ",".join(scopes)
+            token = settings.OPENCLAW_GATEWAY_TOKEN or ""
+
+            # v3 payload: pipe-delimited fields
+            payload = "|".join([
+                "v3", device_id, "cli", "cli", "operator", scopes_str,
+                str(signed_at_ms), token, nonce, "linux", "",
+            ])
+            signature = private_key.sign(payload.encode())
+            sig_b64url = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+            return {
+                "id": device_id,
+                "publicKey": pub_b64url,
+                "signature": sig_b64url,
+                "signedAt": signed_at_ms,
+                "nonce": nonce,
+            }
         except Exception as e:
-            logger.warning("Failed to load device auth: %s", e)
-        return None
+            logger.warning("Failed to build device block: %s", e)
+            return None
 
     def _load_agents_from_config(self):
         """Load agent ID map from the openclaw.json config file as fallback."""
@@ -495,6 +541,9 @@ class OpenClawGateway:
             if text and len(text) > len(chat.get("text", "")):
                 chat["text"] = text
 
+            # Buffer trace steps from content blocks
+            self._buffer_trace_steps(chat, content)
+
         elif state == "final":
             message = payload.get("message", {})
             content = message.get("content", [])
@@ -502,15 +551,22 @@ class OpenClawGateway:
             if text:
                 chat["text"] = text
 
+            # Buffer final trace steps
+            self._buffer_trace_steps(chat, content)
+
             task_id = chat["task_id"]
             result_text = chat.get("text", "")
             chat_type = chat.get("chat_type", "task")
             agent_id = chat.get("agent_id")
+
+            # Flush trace steps and complete trace (non-blocking)
+            usage = message.get("usage") or payload.get("usage") or {}
+            await self._flush_trace(chat, "completed", usage=usage)
+
             self._active_chats.pop(session_key, None)
             await self._remove_active_chat(session_key)
 
             # Log token usage from the final message
-            usage = message.get("usage") or payload.get("usage") or {}
             await self._log_token_usage(
                 task_id=task_id,
                 agent_name=chat.get("agent_name"),
@@ -530,6 +586,11 @@ class OpenClawGateway:
             result_text = chat.get("text", "") or f"Task {state}"
             chat_type = chat.get("chat_type", "task")
             agent_id = chat.get("agent_id")
+
+            # Flush trace and mark as failed/cancelled
+            trace_status = "failed" if state == "error" else "cancelled"
+            await self._flush_trace(chat, trace_status, error_message=f"Task {state}")
+
             self._active_chats.pop(session_key, None)
             await self._remove_active_chat(session_key)
 
@@ -541,6 +602,125 @@ class OpenClawGateway:
                     logger.warning("Mention chat %s for task %d — no response to post", state, task_id)
             else:
                 await self._process_task_result(task_id, result_text, "error")
+
+    @staticmethod
+    def _buffer_trace_steps(chat: dict, content) -> None:
+        """Extract trace steps from message content blocks and buffer them."""
+        if not chat.get("trace_id") or not isinstance(content, list):
+            return
+        buffer = chat.get("trace_steps_buffer", [])
+        counter = chat.get("trace_step_counter", 0)
+        seen_count = len(buffer)
+
+        for i, block in enumerate(content):
+            if not isinstance(block, dict):
+                continue
+            # Only process blocks we haven't seen yet
+            if i < seen_count:
+                continue
+
+            block_type = block.get("type", "")
+            step = None
+
+            if block_type == "thinking":
+                step = {
+                    "step_type": "reasoning",
+                    "content": block.get("thinking", ""),
+                }
+            elif block_type == "text":
+                step = {
+                    "step_type": "reasoning",
+                    "content": block.get("text", ""),
+                }
+            elif block_type == "tool_use":
+                step = {
+                    "step_type": "tool_call",
+                    "content": f"Tool call: {block.get('name', 'unknown')}",
+                    "tool_name": block.get("name"),
+                    "tool_input": block.get("input"),
+                }
+            elif block_type == "tool_result":
+                result_content = block.get("content", "")
+                if isinstance(result_content, list):
+                    result_content = "\n".join(
+                        b.get("text", "") for b in result_content if isinstance(b, dict)
+                    )
+                step = {
+                    "step_type": "tool_result",
+                    "content": str(result_content)[:5000],
+                    "tool_name": block.get("tool_use_id", None),
+                    "tool_output": str(result_content)[:5000],
+                }
+
+            if step:
+                counter += 1
+                step["step_number"] = counter
+                buffer.append(step)
+
+        chat["trace_step_counter"] = counter
+        chat["trace_steps_buffer"] = buffer
+
+    async def _flush_trace(self, chat: dict, status: str,
+                           error_message: str | None = None,
+                           usage: dict | None = None) -> None:
+        """Flush buffered trace steps to DB and complete the trace. Non-blocking."""
+        trace_id = chat.get("trace_id")
+        if not trace_id:
+            return
+        try:
+            from app.services.trace_service import add_trace_step, complete_trace
+            buffer = chat.get("trace_steps_buffer", [])
+
+            # If no steps were captured, add a single summary step
+            if not buffer and chat.get("text"):
+                buffer = [{
+                    "step_number": 1,
+                    "step_type": "reasoning",
+                    "content": chat["text"][:5000],
+                }]
+
+            # Assign token usage to last step if available
+            input_tokens = (usage or {}).get("input_tokens", 0)
+            output_tokens = (usage or {}).get("output_tokens", 0)
+            cost = 0.0
+            if input_tokens or output_tokens:
+                try:
+                    from app.services.budget_service import estimate_cost
+                    cost = estimate_cost(
+                        input_tokens, output_tokens,
+                        chat.get("model_provider", "unknown"),
+                    )
+                except Exception:
+                    pass
+
+            async with async_session() as db:
+                for step_data in buffer:
+                    step_tokens_in = 0
+                    step_tokens_out = 0
+                    step_cost = 0.0
+                    # Assign all tokens to the last step
+                    if step_data is buffer[-1]:
+                        step_tokens_in = input_tokens
+                        step_tokens_out = output_tokens
+                        step_cost = cost
+                    await add_trace_step(
+                        db, trace_id,
+                        step_number=step_data["step_number"],
+                        step_type=step_data["step_type"],
+                        content=step_data.get("content"),
+                        tool_name=step_data.get("tool_name"),
+                        tool_input=step_data.get("tool_input"),
+                        tool_output=step_data.get("tool_output"),
+                        input_tokens=step_tokens_in,
+                        output_tokens=step_tokens_out,
+                        cost=step_cost,
+                    )
+                await complete_trace(db, trace_id, status=status, error_message=error_message)
+                await db.commit()
+            logger.info("Flushed %d trace steps for trace %s (status=%s)",
+                        len(buffer), trace_id, status)
+        except Exception as e:
+            logger.warning("Failed to flush trace %s: %s", trace_id, e)
 
     @staticmethod
     def _extract_text(content) -> str:
@@ -576,6 +756,8 @@ class OpenClawGateway:
                 if not org_id:
                     return
 
+                from app.services.budget_service import estimate_cost
+                cost = estimate_cost(input_tokens, output_tokens, model_provider or "unknown")
                 usage = TokenUsage(
                     org_id=org_id,
                     agent_id=task.assigned_agent_id,
@@ -584,13 +766,25 @@ class OpenClawGateway:
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     total_tokens=input_tokens + output_tokens,
+                    estimated_cost_usd=cost,
                     task_id=task_id,
                 )
                 db.add(usage)
                 await db.commit()
-                logger.info("Token usage: task=%d agent=%s tokens=%d (%s/%s)",
+                logger.info("Token usage: task=%d agent=%s tokens=%d cost=$%.4f (%s/%s)",
                             task_id, agent_name, input_tokens + output_tokens,
-                            model_provider, model_name)
+                            cost, model_provider, model_name)
+
+                # Post-dispatch budget check — warn or pause if near/over budget
+                if task.assigned_agent_id:
+                    try:
+                        from app.services.budget_service import check_budget, pause_agent_for_budget
+                        budget_status = await check_budget(db, task.assigned_agent_id)
+                        if budget_status.get("exceeded"):
+                            reason = f"Monthly budget of ${budget_status['budget_usd']:.2f} exceeded (${budget_status['spent_usd']:.2f} used)"
+                            await pause_agent_for_budget(db, task.assigned_agent_id, reason)
+                    except Exception as be:
+                        logger.warning("Post-dispatch budget check failed: %s", be)
         except Exception as e:
             logger.warning("Failed to log token usage: %s", e)
 
@@ -612,6 +806,22 @@ class OpenClawGateway:
         if not self.ws or self.ws.state.name != "OPEN":
             raise ConnectionError("Not connected to OpenClaw Gateway")
 
+        # Budget check — block dispatch if agent budget is exceeded
+        if agent.budget_paused:
+            from app.services.budget_service import BudgetExceededError
+            raise BudgetExceededError(
+                agent.budget_pause_reason or f"Agent '{agent.name}' is paused due to budget"
+            )
+
+        if agent.monthly_budget_usd is not None:
+            from app.services.budget_service import check_budget, pause_agent_for_budget, BudgetExceededError
+            async with async_session() as budget_db:
+                budget = await check_budget(budget_db, agent.id)
+                if not budget.get("allowed"):
+                    reason = f"Monthly budget of ${budget['budget_usd']:.2f} exceeded (${budget['spent_usd']:.2f} used)"
+                    await pause_agent_for_budget(budget_db, agent.id, reason)
+                    raise BudgetExceededError(reason)
+
         gw_agent_id = self._agent_id_map.get(agent.name)
         if not gw_agent_id:
             raise ValueError(f"Agent '{agent.name}' not found in gateway")
@@ -622,6 +832,7 @@ class OpenClawGateway:
         # Resolve model and active skills for this agent
         model_info = {"provider": "unknown", "model": "unknown"}
         skill_context = ""
+        goal_context_str = ""
         if agent.org_id:
             try:
                 async with async_session() as db:
@@ -642,11 +853,76 @@ class OpenClawGateway:
                             "Injected %d skill(s) into task %d prompt for agent %s",
                             len(active_skills), task.id, agent.name,
                         )
+
+                    # Resolve goal context for this task
+                    from app.services.goal_service import get_goal_context_for_task, build_goal_prompt_context
+                    goal_context = await get_goal_context_for_task(db, task)
+                    if goal_context and (goal_context.mission or goal_context.objective or goal_context.key_result):
+                        goal_context_str = build_goal_prompt_context(goal_context)
+                        logger.info(
+                            "Injected goal context into task %d prompt for agent %s",
+                            task.id, agent.name,
+                        )
+                    else:
+                        goal_context_str = ""
             except Exception:
                 pass
 
+        # Build delegation context — list available agents for delegation
+        # Sub-tasks (tasks with a parent) cannot delegate further
+        delegation_context = ""
+        if agent.org_id and not task.parent_task_id:
+            try:
+                async with async_session() as deleg_db:
+                    other_agents = (await deleg_db.execute(
+                        select(Agent).where(
+                            Agent.org_id == agent.org_id,
+                            Agent.id != agent.id,
+                        )
+                    )).scalars().all()
+                    if other_agents:
+                        agent_lines = []
+                        for oa in other_agents:
+                            agent_lines.append(f"- {oa.name} ({oa.role_title})")
+                        delegation_context = (
+                            "\n## Delegation\n"
+                            "IMPORTANT: You should complete this task yourself. Only delegate if you genuinely lack "
+                            "the expertise for a specific part AND another specialist agent is available. Most tasks "
+                            "should NOT require delegation. Do your own work first, and only delegate clearly "
+                            "separable sub-components if absolutely necessary.\n\n"
+                            "To delegate, include this marker in your response:\n"
+                            "[DELEGATE: AgentName | Sub-task Title | Detailed description of what the agent should do]\n\n"
+                            "Available agents you can delegate to:\n"
+                            + "\n".join(agent_lines) + "\n\n"
+                            "Rules:\n"
+                            "- Only delegate if the task genuinely requires another specialist\n"
+                            "- You can include multiple [DELEGATE:...] markers\n"
+                            "- Your human reviewer will approve delegations before they execute\n"
+                            "- Continue with your own part of the task in your response\n"
+                        )
+                        logger.info("Injected delegation context (%d agents) into task %d prompt",
+                                    len(other_agents), task.id)
+            except Exception as e:
+                logger.warning("Failed to build delegation context: %s", e)
+
         # Format the task as a chat message
-        prompt = self._build_task_prompt(task, skill_context=skill_context)
+        prompt = self._build_task_prompt(task, skill_context=skill_context, goal_context=goal_context_str, delegation_context=delegation_context)
+
+        # Create execution trace (non-blocking)
+        trace_id = None
+        if agent.org_id:
+            try:
+                from app.services.trace_service import create_trace
+                async with async_session() as trace_db:
+                    trace_id = await create_trace(
+                        trace_db, agent.org_id, task.id, agent.id,
+                        model_provider=model_info["provider"],
+                        model_name=model_info["model"],
+                    )
+                    await trace_db.commit()
+                logger.info("Created trace %s for task %d", trace_id, task.id)
+            except Exception as e:
+                logger.warning("Failed to create trace for task %d: %s", task.id, e)
 
         # Track this chat (include model info for token usage logging)
         import time as _time
@@ -658,6 +934,9 @@ class OpenClawGateway:
             "model_provider": model_info["provider"],
             "model_name": model_info["model"],
             "started_at": _time.time(),
+            "trace_id": trace_id,
+            "trace_step_counter": 0,
+            "trace_steps_buffer": [],
         }
         self._active_chats[session_key] = chat_data
         await self._save_active_chat(session_key, chat_data)
@@ -684,19 +963,27 @@ class OpenClawGateway:
             raise ConnectionError(f"Failed to dispatch: {e}")
 
     @staticmethod
-    def _build_task_prompt(task: Task, *, skill_context: str = "") -> str:
-        """Build a chat prompt from a task, injecting skills and analytics data."""
+    def _build_task_prompt(task: Task, *, skill_context: str = "", goal_context: str = "", delegation_context: str = "") -> str:
+        """Build a chat prompt from a task, injecting skills, goals, delegation, and analytics data."""
         parts = []
 
         # Inject active skills before the task (agent reads these as domain context)
         if skill_context:
             parts.append(skill_context)
 
+        # Inject strategic goal context
+        if goal_context:
+            parts.append(goal_context)
+
         parts.append(f"## Task: {task.title}")
         if task.description:
             parts.append(f"\n{task.description}")
         parts.append(f"\nPriority: {task.priority}")
         parts.append("\nPlease complete this task and provide your result.")
+
+        # Inject delegation instructions
+        if delegation_context:
+            parts.append(delegation_context)
 
         # Inject live analytics data for analytics-related agents
         try:
@@ -731,6 +1018,24 @@ class OpenClawGateway:
             # Fix 3: Agent completion always goes to "review" — never directly to "done"
             task.status = "review"
             task.updated_at = datetime.now(timezone.utc)
+
+            # Parse [DELEGATE:...] markers and store as pending_delegations
+            # Sub-tasks (those with a parent) cannot delegate — ignore markers
+            delegation_pattern = r'\[DELEGATE:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]'
+            import re as _re
+            delegations = _re.findall(delegation_pattern, result_text) if not task.parent_task_id else []
+            if delegations:
+                pending = []
+                for agent_name, title, desc in delegations:
+                    pending.append({
+                        "target_agent_name": agent_name.strip(),
+                        "title": title.strip(),
+                        "description": desc.strip(),
+                    })
+                meta = dict(task.metadata_ or {})
+                meta["pending_delegations"] = pending
+                task.metadata_ = meta
+                logger.info("Task %d has %d pending delegation(s)", task_id, len(pending))
 
             if task.assigned_agent:
                 task.assigned_agent.status = "online"

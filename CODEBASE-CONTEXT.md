@@ -1,6 +1,7 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
 ## Last updated: March 29, 2026 (v1.2.0 release)
+## Last updated: March 30, 2026 (goal hierarchy with strategic context injection)
 
 ---
 
@@ -57,9 +58,9 @@
 
 **users** — id (UUID PK), org_id (FK organizations NOT NULL), email (unique global), password_hash, name (unique per org), role (admin|member), avatar_url, telegram_notifications (bool), telegram_user_id, created_at, last_login_at
 
-**agents** — id (UUID PK), org_id (FK organizations), name (unique per org), role_title, department_id (FK departments), primary_board_id (FK boards), system_prompt, status (online|offline|busy|error), execution_mode (auto|manual), model_provider, model_name, model_api_key_encrypted, ai_model_id (FK ai_models), marketplace_template_slug, last_seen_at, openclaw_session_id, created_at
+**agents** — id (UUID PK), org_id (FK organizations), name (unique per org), role_title, department_id (FK departments), primary_board_id (FK boards), system_prompt, status (online|offline|busy|error), execution_mode (auto|manual), model_provider, model_name, model_api_key_encrypted, ai_model_id (FK ai_models), marketplace_template_slug, monthly_budget_usd (DECIMAL nullable), budget_warning_threshold (DECIMAL default 0.80), budget_paused (bool default false), budget_pause_reason (VARCHAR 200), budget_reset_day (int default 1), last_seen_at, openclaw_session_id, created_at
 
-**tasks** — id (UUID PK), board_id (FK boards), title, description, status (todo|in_progress|review|approved|rejected|done|cancelled), priority (low|medium|high|urgent), assigned_agent_id (FK agents nullable), created_by_user_id (FK users), due_date, requires_approval (bool), approved_by_user_id, approved_at, result (text), tags (TEXT[] DEFAULT '{}'), metadata (JSONB), archived (bool DEFAULT false), started_at, completed_at, created_at, updated_at
+**tasks** — id (UUID PK), board_id (FK boards), title, description, status (todo|in_progress|review|approved|rejected|done|cancelled), priority (low|medium|high|urgent), assigned_agent_id (FK agents nullable), created_by_user_id (FK users), due_date, requires_approval (bool), approved_by_user_id, approved_at, result (text), tags (TEXT[] DEFAULT '{}'), metadata (JSONB), goal_id (FK goals SET NULL nullable, indexed), archived (bool DEFAULT false), parent_task_id (FK tasks SET NULL nullable, indexed — delegation parent), delegation_status (VARCHAR 20 nullable — pending|in_progress|completed|failed), delegated_by_agent_id (FK agents SET NULL nullable), started_at, completed_at, created_at, updated_at
 
 **comments** — id (UUID PK), task_id (FK tasks), user_id (FK users nullable), agent_id (FK agents nullable), author_type, author_name, content, mentions (JSONB), created_at
 
@@ -91,6 +92,11 @@
 
 **white_label_config** — id (UUID PK), org_id (FK organizations UNIQUE), product_name (VARCHAR 100, default "HELIX Mission Control"), product_short_name (VARCHAR 30, default "HELIX"), company_name (VARCHAR 100, default "HelixNode"), logo_url (TEXT nullable), favicon_url (TEXT nullable), accent_color (VARCHAR 7, default "#3b82f6"), accent_color_secondary (VARCHAR 7, default "#8b5cf6"), login_title (VARCHAR 200, default "Sign in to Mission Control"), login_subtitle (TEXT nullable), footer_text (VARCHAR 200, default "Powered by HelixNode"), loading_animation_enabled (BOOLEAN default true), loading_animation_text (VARCHAR 30, default "HELIX"), custom_css (TEXT nullable), docs_url (TEXT default "https://docs.helixnode.tech"), support_email (VARCHAR 200 nullable), support_url (TEXT nullable), marketplace_visible (BOOLEAN default true), created_at, updated_at
 
+=======
+### Goals Tables
+
+**goals** — id (SERIAL PK), org_id (FK organizations NOT NULL), parent_goal_id (FK goals CASCADE nullable), title (VARCHAR 500), description (TEXT), goal_type (VARCHAR 20: mission|objective|key_result), status (VARCHAR 20: active|completed|paused|cancelled), owner_type (VARCHAR 10: user|agent|NULL), owner_id (INT nullable polymorphic), target_date (DATE), progress (INT 0-100), department_id (FK departments SET NULL), board_id (FK boards SET NULL), sort_order (INT), created_by (FK users), created_at, updated_at. Indexes: org_id, parent_goal_id, board_id
+
 ### Skills Tables
 
 **skills** — id (UUID PK), org_id (FK organizations), name (200), slug (100 unique per org), version (20), description, category (50), tags (TEXT[]), content (TEXT markdown), frontmatter (JSONB), activation_mode (always|board|tag), activation_boards (UUID[]), activation_tags (TEXT[]), created_by (FK users), is_system (bool), marketplace_template_id (100), created_at, updated_at
@@ -98,6 +104,16 @@
 **agent_skills** — id (UUID PK), agent_id (FK agents CASCADE), skill_id (FK skills CASCADE), assigned_at, assigned_by (FK users). UNIQUE(agent_id, skill_id)
 
 **skill_attachments** — id (UUID PK), skill_id (FK skills CASCADE), filename, original_filename, description, file_size, mime_type, storage_path, uploaded_by (FK users), uploaded_at
+
+### Execution Trace Tables
+
+**execution_traces** — id (UUID PK), org_id (FK organizations), task_id (FK tasks CASCADE), agent_id (FK agents CASCADE), trace_status (VARCHAR 20: running|completed|failed|cancelled), total_steps (INT), total_input_tokens (INT), total_output_tokens (INT), total_estimated_cost_usd (DECIMAL 10,6), model_provider (VARCHAR 50), model_name (VARCHAR 100), error_message (TEXT), started_at, completed_at, duration_ms (INT), created_at. Indexes: task_id, agent_id, org_id
+
+**execution_trace_steps** — id (UUID PK), trace_id (FK execution_traces CASCADE), step_number (INT), step_type (VARCHAR 30: reasoning|tool_call|tool_result|error|system), content (TEXT), tool_name (VARCHAR 200), tool_input (JSONB), tool_output (TEXT), input_tokens (INT), output_tokens (INT), estimated_cost_usd (DECIMAL 10,6), duration_ms (INT), created_at. Index: trace_id
+
+### Schedule Tables
+
+**agent_schedules** — id (UUID PK), org_id (FK organizations), agent_id (FK agents CASCADE), board_id (FK boards CASCADE), name (200), description (TEXT), task_title_template (500), task_prompt (TEXT), schedule_type (daily|weekly|monthly|interval), schedule_time (HH:MM), schedule_days (TEXT[]), schedule_interval_minutes (INT), is_active (bool), requires_approval (bool), priority (20), tags (TEXT[]), last_run_at, next_run_at (indexed WHERE is_active), run_count (INT), retry_count (INT), created_by (FK users), created_at, updated_at
 
 ### AI Model Tables
 
@@ -177,6 +193,13 @@
 | Version | services/version_service.py | Read VERSION file, check api.helixnode.tech for updates, 6h cache |
 | White Label | routers/white_label.py | Branding API (6 endpoints), license-gated |
 | Email Templates | services/email_templates.py | Branded transactional emails via Resend |
+| White Label | routers/white_label.py | Branding API (7 endpoints), license-gated |
+| Email Templates | services/email_templates.py | Branded transactional emails via Resend |
+| Budget Service | services/budget_service.py | Per-agent token budget enforcement, auto-pause, period reset |
+| Goal Service | services/goal_service.py | Goal tree queries (CTE), context injection for prompts, auto-progress calculation |
+| Schedule Service | services/schedule_service.py | Recurring task scheduling — calculate next run, execute schedules, background checker |
+| Trace Service | services/trace_service.py | Execution trace CRUD — create/complete traces, add steps, query by task/agent, org-scoped stats |
+| Delegation Service | services/delegation_service.py | Agent-to-agent delegation — create sub-tasks, delegation tree (recursive CTE), depth/count limits, completion tracking |
 | Encryption | utils/encryption.py | Fernet encrypt/decrypt (JWT_SECRET derived) |
 
 ---
@@ -213,6 +236,12 @@
 - `app/forgot-password/page.tsx` — Forgot password form
 - `app/reset-password/page.tsx` — Reset password with token
 - `components/onboarding/branding-step.tsx` — Onboarding branding step
+- `app/costs/page.tsx` — Cost dashboard (spend by agent, daily chart, top tasks)
+- `app/tasks/[id]/traces/page.tsx` — Execution trace viewer (timeline of LLM steps per task)
+- `components/trace-viewer.tsx` — Trace detail component (header + step timeline)
+- `components/trace-step.tsx` — Individual trace step (reasoning, tool_call, tool_result, error, system)
+- `components/delegation-tree.tsx` — Recursive delegation tree viewer (parent → sub-tasks, max 3 levels, click to navigate)
+- `components/delegation-badge.tsx` — Badge component for task cards (sub-task count on parents, "Delegated by" on children)
 
 ---
 
@@ -228,6 +257,7 @@
 8. HTTP-first Nginx then Certbot (SSL chicken-and-egg pattern)
 9. Docker env vars must be explicit in docker-compose.yml
 10. helix user has no sudo
+11. Goal context injects into agent prompts at dispatch time — same pattern as skills (resolve → build context → prepend to prompt)
 
 ---
 
@@ -274,6 +304,123 @@ After every Claude Code session that creates/modifies files:
 - Bottom section: replaced entire waitlist form (email input, submit JS, success/error states) with "Deploy Your AI Team Today" section featuring install command (Linux/macOS tab switcher), "Read the Docs" CTA, and "View on GitHub" link
 - Removed `submitWaitlist()` JavaScript function and waitlist form CSS
 - No changes to Marketplace, Features, How It Works, White Label, or Footer sections
+### March 30, 2026 — Agent-to-Agent Delegation
+
+**Feature:** Agents can delegate sub-tasks to other specialist agents during task execution. Parent agent includes `[DELEGATE: AgentName | Title | Description]` markers in its response, which are parsed and stored as pending_delegations. Upon human approval, sub-tasks are created and auto-dispatched. Delegation tree shows full parent→child hierarchy (max 3 levels, max 5 sub-tasks per parent).
+
+**New files:**
+- `backend/app/services/delegation_service.py` — Core delegation logic: create_delegation, get_sub_tasks, get_delegation_tree, get_delegation_depth, complete_delegation, get_sub_tasks_count
+- `backend/app/routers/delegations.py` — POST /tasks/{id}/delegate, GET /tasks/{id}/subtasks, GET /tasks/{id}/delegation-tree
+- `frontend/src/components/delegation-tree.tsx` — Recursive tree viewer for delegation hierarchy
+- `frontend/src/components/delegation-badge.tsx` — Badge component for parent/child delegation indicators
+
+**Modified files:**
+- `backend/app/models/task.py` — Added parent_task_id, delegation_status, delegated_by_agent_id columns + parent_task/delegated_by_agent relationships
+- `backend/app/schemas/task.py` — Added delegation fields to TaskOut/TaskCreate, new DelegationRequest and DelegationTreeNode schemas
+- `backend/app/services/gateway.py` — Delegation context injection in dispatch_task() (available agents list), delegation instructions in _build_task_prompt(), [DELEGATE:...] marker parsing in _process_task_result()
+- `backend/app/routers/tasks.py` — Delegation approval hook (create+dispatch sub-tasks on approve/done), delegation_status transitions (completed/failed on sub-task status change), sub_tasks_count in responses, delegated_by_agent eager loading
+- `backend/app/main.py` — ALTER TABLE tasks ADD COLUMN for delegation columns, CREATE INDEX, register delegations router
+- `frontend/src/lib/api.ts` — Added delegation fields to Task type, DelegationRequest/DelegationTreeNode types, createDelegation/getSubTasks/getDelegationTree methods
+- `frontend/src/app/boards/[id]/page.tsx` — Delegation badges on task cards, delegation tree in task detail, styled delegation request cards in result, parent task link on sub-tasks
+- `frontend/src/app/tasks/[id]/traces/page.tsx` — Delegation tree section for tasks with sub-tasks
+
+**Delegation flow:** Agent response → parse [DELEGATE:...] → store pending_delegations in metadata → human reviews → on approve → create_delegation() → auto-dispatch sub-tasks → sub-task completes → delegation_status updated → parent metadata updated when all done.
+
+### March 30, 2026 — Deep Execution Tracing
+
+**Feature:** Log every LLM reasoning step, tool call, and tool result during agent task execution. Drill-down trace viewer on task detail shows exactly what the agent did, why, and at what cost.
+
+**New files:**
+- `backend/app/models/execution_trace.py` — SQLAlchemy models for execution_traces and execution_trace_steps
+- `backend/app/schemas/execution_trace.py` — TraceOut, TraceStepOut, TraceDetailOut, TraceStatsOut
+- `backend/app/routers/traces.py` — GET /tasks/{id}/traces, GET /traces/{id}, GET /agents/{id}/traces, GET /traces/stats
+- `backend/app/services/trace_service.py` — create_trace, add_trace_step, complete_trace, get_trace, get_traces_for_task/agent, get_trace_stats
+- `frontend/src/app/tasks/[id]/traces/page.tsx` — Trace viewer page (auto-expand single trace, list for retries)
+- `frontend/src/app/tasks/[id]/traces/layout.tsx` — Layout with sidebar
+- `frontend/src/components/trace-viewer.tsx` — Trace detail (header + timeline of steps)
+- `frontend/src/components/trace-step.tsx` — Individual step rendering (reasoning/tool_call/tool_result/error/system)
+
+**Modified files:**
+- `backend/app/main.py` — CREATE TABLE for execution_traces + execution_trace_steps, register traces router
+- `backend/app/services/gateway.py` — Trace creation before dispatch, step buffering during streaming, non-blocking flush on completion/error
+- `backend/app/schemas/task.py` — Added traces_count field to TaskOut
+- `backend/app/routers/tasks.py` — Attach traces_count in get_task endpoint
+- `frontend/src/lib/api.ts` — Trace/TraceStep/TraceDetail/TraceStats types, getTaskTraces/getTraceDetail/getAgentTraces/getTraceStats methods, traces_count on Task
+- `frontend/src/app/boards/[id]/page.tsx` — "View Execution Trace" button on task detail when traces exist
+- `frontend/src/app/agents/[id]/page.tsx` — "Traces" tab showing recent traces for the agent
+- `frontend/src/app/costs/page.tsx` — "traces" link next to each agent in spend-by-agent section
+
+### March 30, 2026 — Goal Hierarchy (Mission → Objectives → Key Results)
+
+**Feature:** Strategic goal layer above department → board → task structure. Goals cascade context into agent prompts at dispatch time so agents know the strategic purpose behind their work.
+
+**New files:**
+- `backend/app/models/goal.py` — SQLAlchemy model for goals table (3-level hierarchy: mission → objective → key_result)
+- `backend/app/schemas/goal.py` — GoalCreate, GoalUpdate, GoalOut, GoalTree, GoalContext, GoalProgressUpdate schemas
+- `backend/app/routers/goals.py` — CRUD endpoints (list, tree, get, create, update, delete), progress (manual + auto-calculate), task linking (link, unlink, list tasks)
+- `backend/app/services/goal_service.py` — get_goal_context_for_task (walk up tree), auto_calculate_progress, get_goal_tree (WITH RECURSIVE CTE), build_goal_prompt_context
+- `frontend/src/app/goals/page.tsx` — Goals management page with tree view (expand/collapse) and list view toggle, create/edit/delete dialogs
+- `frontend/src/app/goals/layout.tsx` — Layout with sidebar (same pattern as costs/schedules)
+
+**Modified files:**
+- `backend/app/models/task.py` — Added goal_id (FK goals SET NULL) column and goal relationship
+- `backend/app/schemas/task.py` — Added goal_id to TaskCreate/TaskUpdate, goal_id + goal_title to TaskOut with model_validator
+- `backend/app/services/gateway.py` — Goal context injection in dispatch_task() after skill injection, _build_task_prompt() accepts goal_context parameter
+- `backend/app/routers/tasks.py` — Added selectinload(Task.goal) to all queries, goal attribute to refresh calls
+- `backend/app/main.py` — CREATE TABLE goals migration, ALTER TABLE tasks ADD goal_id, goals router registration
+- `frontend/src/components/sidebar.tsx` — Added "Goals" nav item with Target icon in admin section
+- `frontend/src/app/boards/[id]/page.tsx` — Board goal banner, goal dropdown in task creation, Target icon on goal-linked tasks
+- `frontend/src/app/dashboard/page.tsx` — "Active Goals" section showing missions with progress and objectives
+- `frontend/src/lib/api.ts` — Goal/GoalTree types, goal_id on Task/TaskCreate, 10 goal API methods
+
+**New table:** `goals` — Hierarchical goal storage with parent_goal_id self-reference, polymorphic owner, optional board/department scoping
+
+**Goal context injection:** When a task has goal_id set, dispatch_task() walks up the goal tree and prepends "## Strategic Context" with mission/objective/key_result titles to the agent prompt.
+
+---
+
+### March 30, 2026 — Scheduled Recurring Tasks for Agents
+
+**Feature:** Admins can configure recurring schedules on agents that automatically create and dispatch tasks on a cron-like schedule (daily, weekly, monthly, or interval).
+
+**New files:**
+- `backend/app/services/schedule_service.py` — Core scheduling logic: calculate_next_run, format_task_title, execute_schedule, check_and_run_due_schedules
+- `backend/app/routers/schedules.py` — CRUD endpoints for agent schedules (list, create, update, delete, toggle, run-now, list-all)
+- `frontend/src/app/schedules/page.tsx` — Global schedules overview page (admin)
+
+**Modified files:**
+- `backend/app/main.py` — CREATE TABLE agent_schedules migration, periodic_schedule_checker background task (60s), register schedules router
+- `frontend/src/app/agents/[id]/page.tsx` — Added "Schedules" tab with create/edit dialog, toggle, run-now, delete
+- `frontend/src/components/sidebar.tsx` — Added "Schedules" nav item with CalendarClock icon in admin section
+- `frontend/src/lib/api.ts` — Added AgentSchedule types and 7 schedule API methods
+
+**New table:** `agent_schedules` — Stores schedule config, pre-calculated next_run_at (indexed), retry tracking
+
+---
+
+### March 30, 2026 — Agent Token Budgets with Auto-Pause and Cost Dashboard
+
+**Feature:** Per-agent monthly token budgets with automatic pause at limit, admin override, and cost dashboard.
+
+**New files:**
+- `backend/app/services/budget_service.py` — Budget calculation (get_agent_spend_this_period, check_budget), pause/unpause, daily reset, cost estimation
+- `frontend/src/app/costs/page.tsx` — Cost dashboard: KPI cards, spend by agent with progress bars, daily spend bar chart, top expensive tasks table
+
+**Modified files:**
+- `backend/app/models/agent.py` — Added monthly_budget_usd, budget_warning_threshold, budget_paused, budget_pause_reason, budget_reset_day columns
+- `backend/app/models/token_usage.py` — Added estimated_cost_usd column (DECIMAL 10,6)
+- `backend/app/schemas/agent.py` — Added budget fields to AgentOut, new BudgetStatus and BudgetUpdate schemas
+- `backend/app/services/gateway.py` — Pre-dispatch budget check (blocks if exceeded), post-dispatch budget check (pauses if exceeded), cost estimation on token logging
+- `backend/app/routers/tasks.py` — Catch BudgetExceededError in _maybe_auto_dispatch and execute_task
+- `backend/app/routers/agents.py` — GET/PUT /agents/{id}/budget, POST /agents/{id}/budget/override endpoints
+- `backend/app/routers/dashboard.py` — GET /dashboard/costs endpoint (org-wide cost data)
+- `backend/app/main.py` — ALTER TABLE migrations for budget columns, periodic_budget_reset background task
+- `frontend/src/lib/api.ts` — BudgetStatus, CostDashboard types, budget API methods, Agent type updated
+- `frontend/src/components/sidebar.tsx` — Added "Costs" (DollarSign icon) to admin nav
+- `frontend/src/app/agents/[id]/page.tsx` — Budget card with progress bar, set/edit budget dialog, paused banner with override
+- `frontend/src/app/agents/page.tsx` — Budget indicator badges on agent cards
+
+**Budget flow:** NULL monthly_budget_usd = unlimited. Pre-dispatch check blocks tasks if exceeded. Post-dispatch check pauses agent after task pushes over budget. Daily reset unpauses agents on budget_reset_day.
 
 ### March 26, 2026 — Update OpenAI provider models to GPT-5.x series
 
@@ -660,10 +807,10 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 
 **New files — Mission Control:**
 - `VERSION` — Repo root, contains "1.0.0". Committed to git, mounted read-only into backend container.
-- `backend/app/services/version_service.py` — Reads VERSION file, calls `GET api.helixnode.tech/v1/version/latest`, 6h in-memory cache, semver comparison, reads/writes `.update-trigger`/`.update-result`/`.update-history` files in `data/` directory.
-- `backend/app/routers/version.py` — `GET /api/version` (public: current + latest version, update status), `POST /api/version/check` (admin: force re-check), `POST /api/version/update` (admin: trigger update, requires password confirmation, 1-per-hour rate limit), `GET /api/version/history` (admin: last 10 updates).
-- `update-daemon.sh` — Host-level bash script (systemd service). Polls `data/.update-trigger` every 10s. On trigger: git pull, docker compose up --build, wait 90s, health check (3 attempts). Auto-rollback on failure (git checkout saved commit, rebuild, verify health). Writes JSON results to `data/.update-result` and `data/.update-history`.
-- `frontend/src/app/settings/system/page.tsx` — Settings > System page: current/latest version display, check for updates, update now with password confirmation dialog, progress polling every 15s, update history list with status badges.
+- `backend/app/services/version_service.py` — Reads VERSION file, calls `GET api.helixnode.tech/v1/version/latest`, 6h in-memory cache, semver comparison, reads/writes `.update-trigger`/`.update-result`/`.update-history`/`.update-cancel` files in `data/` directory.
+- `backend/app/routers/version.py` — `GET /api/version` (public: current + latest version, update status with stage/message), `POST /api/version/check` (admin: force re-check), `POST /api/version/update` (admin: trigger update, requires password confirmation, 1-per-hour rate limit), `POST /api/version/cancel` (admin: cancel in-progress update, requires password), `GET /api/version/history` (admin: last 10 updates).
+- `update-daemon.sh` — Host-level bash script (systemd service). Polls `data/.update-trigger` every 10s. On trigger: git pull, docker compose up --build (with 10-minute timeout via `timeout 600`), wait 90s, health check (3 attempts). Auto-rollback on failure or timeout. Writes progress stages (pulling_code → building → starting) to `data/.update-result`. Checks for `data/.update-cancel` file at each stage to support user-initiated cancellation. Writes JSON results to `data/.update-result` and `data/.update-history`.
+- `frontend/src/app/settings/system/page.tsx` — Settings > System page: current/latest version display, check for updates, update now with password confirmation dialog, progress polling every 15s with stage display (Step 1/3, 2/3, 3/3), cancel update button with password confirmation, amber timeout warning after 5 minutes, update history list with status badges (including cancelled status).
 
 **New files — License Server (~/helixnode-api):**
 - `app/routes/version.py` — `GET /v1/version/latest` returns `{ version, release_date, changelog_url, min_version, message }` from env vars `LATEST_HELIX_VERSION` and `LATEST_HELIX_RELEASE_DATE`.
@@ -678,7 +825,7 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `helixnode-api/app/main.py` — Registered version router.
 - `helixnode-api/docker-compose.yml` — Added `LATEST_HELIX_VERSION` and `LATEST_HELIX_RELEASE_DATE` env vars.
 
-**Update flow:** Admin clicks "Update Now" in Settings > System → enters password → backend writes `data/.update-trigger` → host daemon detects trigger → git pull → docker compose up --build → wait 90s → health check → success or auto-rollback → writes result to `data/.update-result` → frontend polls `/api/version` every 15s and shows result.
+**Update flow:** Admin clicks "Update Now" in Settings > System → enters password → backend writes `data/.update-trigger` → host daemon detects trigger → writes progress stages → git pull → docker compose up --build (10min timeout) → wait 90s → health check → success or auto-rollback → writes result to `data/.update-result` → frontend polls `/api/version` every 15s and shows staged progress. Cancel: admin clicks "Cancel Update" → enters password → backend writes `data/.update-cancel` → daemon detects at next stage boundary → aborts and writes cancelled status.
 
 **Systemd service:** `helix-updater.service` — runs `update-daemon.sh` as root, auto-restarts.
 
@@ -805,6 +952,7 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - backend/app/models/white_label.py — SQLAlchemy model WhiteLabelConfig
 - backend/app/schemas/white_label.py — Pydantic schemas (BrandingPublic, WhiteLabelConfigOut, WhiteLabelConfigUpdate)
 - backend/app/routers/white_label.py — 6 API endpoints
+- backend/app/routers/white_label.py — 7 API endpoints
 
 **New endpoints:**
 - GET /api/branding — public (no auth), returns branding config with defaults
@@ -812,6 +960,7 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - PUT /api/settings/white-label — admin only, update config (gated to white_label license feature)
 - POST /api/settings/white-label/logo — admin only, upload logo (png/jpg/svg, 2MB max)
 - POST /api/settings/white-label/favicon — admin only, upload favicon (png/ico/svg, 500KB max)
+- POST /api/settings/white-label/reset — admin only, reset all branding to defaults (deletes DB row, logs activity)
 - GET /api/uploads/branding/{filename} — public, serve uploaded branding assets
 
 **License gating:**
@@ -1052,3 +1201,17 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Docs built (~/helixnode-docs/dist/) — needs sudo to deploy to /var/www/docs.helixnode.tech/
 
 **Staging VERSION updated to 1.2.0**
+
+### March 30, 2026 — Update Daemon Hardening + White Label Reset
+
+**Part 1: Update Daemon Hardening**
+- `update-daemon.sh` — Added 10-minute build timeout (`timeout 600`), progress stages written to `.update-result` (pulling_code → building → starting), cancel support via `.update-cancel` file checked at each stage
+- `backend/app/routers/version.py` — New `POST /api/version/cancel` endpoint (admin, password confirmation, writes `.update-cancel`)
+- `backend/app/services/version_service.py` — Added `write_cancel_trigger()` and `UPDATE_CANCEL` path constant
+- `frontend/src/app/settings/system/page.tsx` — Progress stage display (Step 1/3, 2/3, 3/3), Cancel Update button with password confirmation dialog, amber warning after 5 minutes, cancelled status badge, light mode warning banner contrast already fixed in prior commit
+- `frontend/src/lib/api.ts` — Added `cancelUpdate()` method, `stage`/`started_at` fields to `UpdateHistoryItem`
+
+**Part 2: White Label Reset to Defaults**
+- `backend/app/routers/white_label.py` — New `POST /api/settings/white-label/reset` endpoint (admin, white_label feature required, deletes DB row, logs activity, returns BrandingPublic defaults)
+- `frontend/src/app/settings/white-label/page.tsx` — "Reset to Defaults" button (red outline, RefreshCcw icon) at top-right, confirmation dialog, calls reset endpoint then reloads page
+- `frontend/src/lib/api.ts` — Added `resetWhiteLabelSettings()` method

@@ -15,6 +15,7 @@ VERSION_FILE = Path("/app/VERSION")
 DATA_DIR = Path("/app/data")
 UPDATE_TRIGGER = DATA_DIR / ".update-trigger"
 UPDATE_RESULT = DATA_DIR / ".update-result"
+UPDATE_CANCEL = DATA_DIR / ".update-cancel"
 UPDATE_HISTORY = DATA_DIR / ".update-history"
 
 LICENSE_SERVER_URL = os.environ.get("LICENSE_SERVER_URL", "https://api.helixnode.tech")
@@ -140,3 +141,10 @@ def write_update_trigger(target_version: str):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPDATE_TRIGGER.write_text(target_version)
     logger.info("Update trigger written for version %s", target_version)
+
+
+def write_cancel_trigger():
+    """Write the .update-cancel file to signal the daemon to abort."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    UPDATE_CANCEL.write_text("cancel")
+    logger.info("Update cancel trigger written")

@@ -94,6 +94,25 @@ async def trigger_update(
     }
 
 
+# ─── POST /api/version/cancel — admin, cancel in-progress update ───
+
+
+@router.post("/cancel")
+async def cancel_update(
+    body: UpdateRequest,
+    user: User = Depends(require_admin),
+):
+    """Cancel an in-progress update. Requires admin password confirmation."""
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=403, detail="Invalid password")
+
+    if not version_service.is_update_in_progress():
+        raise HTTPException(status_code=400, detail="No update is currently in progress")
+
+    version_service.write_cancel_trigger()
+    return {"status": "cancel_requested", "message": "Cancel signal sent to update daemon"}
+
+
 # ─── GET /api/version/history — admin ───
 
 @router.get("/history")

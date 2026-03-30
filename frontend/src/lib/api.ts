@@ -231,6 +231,17 @@ export const api = {
   // Dashboard
   dashboardStats: () => request<DashboardStats>("/dashboard/stats"),
   dashboardActivity: () => request<{ activities: DashboardActivity[] }>("/dashboard/activity"),
+  dashboardCosts: () => request<CostDashboard>("/dashboard/costs"),
+
+  // Agent Budget
+  getAgentBudget: (agentId: number) => request<BudgetStatus>(`/agents/${agentId}/budget`),
+  updateAgentBudget: (agentId: number, data: { monthly_budget_usd: number | null; budget_warning_threshold: number; budget_reset_day: number }) =>
+    request<BudgetStatus>(`/agents/${agentId}/budget`, { method: "PUT", body: JSON.stringify(data) }),
+  overrideAgentBudget: (agentId: number, increase?: number) =>
+    request<{ status: string; message: string }>(`/agents/${agentId}/budget/override`, {
+      method: "POST",
+      body: JSON.stringify(increase ? { increase_budget_usd: increase } : {}),
+    }),
 
   // Notifications
   getNotifications: (params?: { read?: boolean; page?: number; per_page?: number }) => {
@@ -623,6 +634,8 @@ export const api = {
     request<WhiteLabelConfig>("/settings/white-label"),
   updateWhiteLabelSettings: (data: Partial<WhiteLabelConfig>) =>
     request<WhiteLabelConfig>("/settings/white-label", { method: "PUT", body: JSON.stringify(data) }),
+  resetWhiteLabelSettings: () =>
+    request<Partial<WhiteLabelConfig>>("/settings/white-label/reset", { method: "POST" }),
   uploadWhiteLabelLogo: async (file: File): Promise<{ logo_url: string }> => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const form = new FormData();
@@ -673,6 +686,8 @@ export const api = {
   triggerUpdate: (password: string) =>
     request<UpdateTriggerResponse>("/version/update", { method: "POST", body: JSON.stringify({ password }) }),
   getUpdateHistory: () => request<{ updates: UpdateHistoryItem[] }>("/version/history"),
+  cancelUpdate: (password: string) =>
+    request<{ status: string; message: string }>("/version/cancel", { method: "POST", body: JSON.stringify({ password }) }),
 
   // Agent Plugins
   agentPlugins: (agentId: number) =>
@@ -683,6 +698,77 @@ export const api = {
     request<void>(`/agents/${agentId}/plugins/${pluginId}`, { method: "DELETE" }),
   agentCapabilities: (agentId: number) =>
     request<AgentCapabilityItem[]>(`/agents/${agentId}/capabilities`),
+
+  // Agent Schedules
+  getAgentSchedules: (agentId: number) =>
+    request<AgentSchedule[]>(`/agents/${agentId}/schedules`),
+  createAgentSchedule: (agentId: number, data: AgentScheduleCreate) =>
+    request<AgentSchedule>(`/agents/${agentId}/schedules`, { method: "POST", body: JSON.stringify(data) }),
+  updateAgentSchedule: (agentId: number, scheduleId: string, data: Partial<AgentScheduleCreate>) =>
+    request<AgentSchedule>(`/agents/${agentId}/schedules/${scheduleId}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteAgentSchedule: (agentId: number, scheduleId: string) =>
+    request<void>(`/agents/${agentId}/schedules/${scheduleId}`, { method: "DELETE" }),
+  toggleAgentSchedule: (agentId: number, scheduleId: string) =>
+    request<AgentSchedule>(`/agents/${agentId}/schedules/${scheduleId}/toggle`, { method: "POST" }),
+  runScheduleNow: (agentId: number, scheduleId: string) =>
+    request<{ task_id: number; message: string }>(`/agents/${agentId}/schedules/${scheduleId}/run-now`, { method: "POST" }),
+  getAllSchedules: () =>
+    request<AgentScheduleWithAgent[]>("/schedules"),
+
+  // Goals
+  getGoals: (filters?: { goal_type?: string; status?: string; board_id?: number; department_id?: number }) => {
+    const qs = new URLSearchParams();
+    if (filters?.goal_type) qs.set("goal_type", filters.goal_type);
+    if (filters?.status) qs.set("status", filters.status);
+    if (filters?.board_id) qs.set("board_id", String(filters.board_id));
+    if (filters?.department_id) qs.set("department_id", String(filters.department_id));
+    const q = qs.toString();
+    return request<Goal[]>(`/goals/${q ? `?${q}` : ""}`);
+  },
+  getGoalTree: (status?: string) =>
+    request<GoalTree[]>(`/goals/tree${status ? `?status=${status}` : ""}`),
+  getGoal: (id: number) => request<Goal>(`/goals/${id}`),
+  createGoal: (data: Record<string, unknown>) =>
+    request<Goal>("/goals/", { method: "POST", body: JSON.stringify(data) }),
+  updateGoal: (id: number, data: Record<string, unknown>) =>
+    request<Goal>(`/goals/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteGoal: (id: number) =>
+    request<void>(`/goals/${id}`, { method: "DELETE" }),
+  updateGoalProgress: (id: number, progress?: number, auto?: boolean) =>
+    request<Goal>(`/goals/${id}/progress`, {
+      method: "POST",
+      body: JSON.stringify(auto ? { auto: true } : { progress }),
+    }),
+  linkTaskToGoal: (taskId: number, goalId: number) =>
+    request<{ status: string }>(`/tasks/${taskId}/goal`, {
+      method: "POST",
+      body: JSON.stringify({ goal_id: goalId }),
+    }),
+  unlinkTaskFromGoal: (taskId: number) =>
+    request<{ status: string }>(`/tasks/${taskId}/goal`, { method: "DELETE" }),
+  getGoalTasks: (goalId: number) =>
+    request<Task[]>(`/goals/${goalId}/tasks`),
+
+  // Execution Traces
+  getTaskTraces: (taskId: number) =>
+    request<Trace[]>(`/tasks/${taskId}/traces`),
+  getTraceDetail: (traceId: string) =>
+    request<TraceDetail>(`/traces/${traceId}`),
+  getAgentTraces: (agentId: number, limit?: number) =>
+    request<Trace[]>(`/agents/${agentId}/traces${limit ? `?limit=${limit}` : ""}`),
+  getTraceStats: (days?: number) =>
+    request<TraceStats>(`/traces/stats${days ? `?days=${days}` : ""}`),
+
+  // Delegations
+  createDelegation: (taskId: number, data: DelegationRequest) =>
+    request<Task>(`/tasks/${taskId}/delegate`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  getSubTasks: (taskId: number) =>
+    request<Task[]>(`/tasks/${taskId}/subtasks`),
+  getDelegationTree: (taskId: number) =>
+    request<DelegationTreeNode>(`/tasks/${taskId}/delegation-tree`),
 };
 
 // Types
@@ -724,7 +810,44 @@ export interface Agent {
   status: string;
   execution_mode: string;
   ai_model_id: number | null;
+  monthly_budget_usd: number | null;
+  budget_paused: boolean;
+  budget_pause_reason: string | null;
   created_at: string;
+}
+
+export interface BudgetStatus {
+  budget_usd: number | null;
+  spent_usd: number;
+  remaining_usd: number;
+  percentage: number;
+  warning: boolean;
+  exceeded: boolean;
+  budget_paused: boolean;
+  budget_pause_reason: string | null;
+  reset_day: number;
+  unlimited: boolean;
+}
+
+export interface CostDashboard {
+  total_spend_this_month: number;
+  total_spend_last_month: number;
+  spend_by_agent: Array<{
+    agent_id: number;
+    agent_name: string;
+    spent_usd: number;
+    budget_usd: number | null;
+    percentage: number;
+    budget_paused: boolean;
+  }>;
+  spend_by_day: Array<{ date: string; total_usd: number }>;
+  top_expensive_tasks: Array<{
+    task_id: number;
+    task_title: string;
+    agent_name: string;
+    cost_usd: number;
+    tokens: number;
+  }>;
 }
 
 export interface Task {
@@ -743,6 +866,14 @@ export interface Task {
   result: string | null;
   tags: string[] | null;
   archived: boolean;
+  goal_id: number | null;
+  goal_title: string | null;
+  traces_count: number;
+  parent_task_id: number | null;
+  delegation_status: string | null;
+  delegated_by_agent_id: number | null;
+  delegated_by_agent_name: string | null;
+  sub_tasks_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -756,6 +887,32 @@ export interface TaskCreate {
   due_date?: string;
   requires_approval?: boolean;
   tags?: string[];
+  goal_id?: number;
+}
+
+export interface Goal {
+  id: number;
+  org_id: number;
+  parent_goal_id: number | null;
+  title: string;
+  description: string | null;
+  goal_type: "mission" | "objective" | "key_result";
+  status: "active" | "completed" | "paused" | "cancelled";
+  owner_type: "user" | "agent" | null;
+  owner_id: number | null;
+  target_date: string | null;
+  progress: number;
+  department_id: number | null;
+  board_id: number | null;
+  sort_order: number;
+  children_count: number;
+  tasks_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoalTree extends Goal {
+  children: GoalTree[];
 }
 
 export interface Comment {
@@ -1620,7 +1777,114 @@ export interface UpdateHistoryItem {
   status: string;
   version: string;
   previous_version: string;
+  stage?: string;
   message?: string;
   error?: string;
   timestamp: string;
+  started_at?: string;
+}
+
+// Agent Schedule types
+export interface AgentSchedule {
+  id: string;
+  org_id: number;
+  agent_id: number;
+  board_id: number;
+  name: string;
+  description: string | null;
+  task_title_template: string;
+  task_prompt: string;
+  schedule_type: "daily" | "weekly" | "monthly" | "interval";
+  schedule_time: string;
+  schedule_days: string[];
+  schedule_interval_minutes: number | null;
+  is_active: boolean;
+  requires_approval: boolean;
+  priority: string;
+  tags: string[];
+  last_run_at: string | null;
+  next_run_at: string | null;
+  run_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AgentScheduleCreate {
+  name: string;
+  description?: string;
+  board_id: number;
+  task_title_template: string;
+  task_prompt: string;
+  schedule_type: string;
+  schedule_time: string;
+  schedule_days?: string[];
+  schedule_interval_minutes?: number;
+  requires_approval?: boolean;
+  priority?: string;
+  tags?: string[];
+}
+
+export interface AgentScheduleWithAgent extends AgentSchedule {
+  agent_name: string;
+  agent_status: string;
+}
+
+// Execution Trace types
+export interface Trace {
+  id: string;
+  task_id: number;
+  agent_id: number;
+  trace_status: string;
+  total_steps: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_estimated_cost_usd: number;
+  model_provider: string | null;
+  model_name: string | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface TraceStep {
+  id: string;
+  step_number: number;
+  step_type: string;
+  content: string | null;
+  tool_name: string | null;
+  tool_input: Record<string, unknown> | null;
+  tool_output: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface TraceDetail extends Trace {
+  steps: TraceStep[];
+}
+
+export interface TraceStats {
+  total_traces: number;
+  avg_steps: number;
+  avg_cost_usd: number;
+  avg_duration_ms: number;
+}
+
+// Delegation types
+export interface DelegationRequest {
+  target_agent_id: number;
+  title: string;
+  description: string;
+  priority?: string;
+  board_id?: number;
+  tags?: string[];
+}
+
+export interface DelegationTreeNode {
+  task: Task;
+  sub_tasks: DelegationTreeNode[];
 }

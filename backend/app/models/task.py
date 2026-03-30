@@ -22,8 +22,13 @@ class Task(Base):
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), server_default="{}", nullable=True)
+    goal_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True, index=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    # Delegation columns
+    parent_task_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    delegation_status: Mapped[str | None] = mapped_column(String(20), nullable=True)  # pending | in_progress | completed | failed
+    delegated_by_agent_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -34,6 +39,9 @@ class Task(Base):
     )
 
     board: Mapped["Board"] = relationship(back_populates="tasks")  # noqa: F821
-    assigned_agent: Mapped["Agent | None"] = relationship()  # noqa: F821
+    assigned_agent: Mapped["Agent | None"] = relationship(foreign_keys=[assigned_agent_id])  # noqa: F821
     created_by: Mapped["User"] = relationship()  # noqa: F821
+    goal: Mapped["Goal | None"] = relationship()  # noqa: F821
     comments: Mapped[list["Comment"]] = relationship(back_populates="task", order_by="Comment.created_at")  # noqa: F821
+    parent_task: Mapped["Task | None"] = relationship(remote_side="Task.id", foreign_keys=[parent_task_id], backref="sub_tasks")
+    delegated_by_agent: Mapped["Agent | None"] = relationship(foreign_keys=[delegated_by_agent_id])  # noqa: F821

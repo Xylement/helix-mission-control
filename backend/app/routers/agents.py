@@ -14,7 +14,7 @@ from app.models.task import Task
 from app.models.board import Board
 from app.models.user import User
 from app.models.activity import ActivityLog
-from app.schemas.agent import AgentOut, AgentCreate, AgentUpdate
+from app.schemas.agent import AgentOut, AgentCreate, AgentUpdate, BudgetStatus, BudgetUpdate
 from app.services.license_service import LicenseService
 from app.services.gateway import gateway
 from app.services.permissions import get_user_accessible_board_ids
@@ -476,3 +476,112 @@ async def get_agent_tasks(
         "per_page": per_page,
         "pages": (total + per_page - 1) // per_page if per_page else 0,
     }
+
+
+# ── Budget endpoints ──────────────────────────────────────────────────
+
+@router.get("/{agent_id}/budget", response_model=BudgetStatus)
+async def get_agent_budget(
+    agent_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    org_id = getattr(user, "org_id", None)
+    agent = (await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    from app.services.budget_service import check_budget
+    status = await check_budget(db, agent_id)
+    return BudgetStatus(
+        budget_usd=status.get("budget_usd"),
+        spent_usd=status.get("spent_usd", 0),
+        remaining_usd=status.get("remaining_usd", 0),
+        percentage=status.get("percentage", 0),
+        warning=status.get("warning", False),
+        exceeded=status.get("exceeded", False),
+        budget_paused=agent.budget_paused or False,
+        budget_pause_reason=agent.budget_pause_reason,
+        reset_day=agent.budget_reset_day or 1,
+        unlimited=status.get("unlimited", True),
+    )
+
+
+@router.put("/{agent_id}/budget", response_model=BudgetStatus)
+async def update_agent_budget(
+    agent_id: int,
+    body: BudgetUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    org_id = getattr(user, "org_id", None)
+    agent = (await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.monthly_budget_usd = body.monthly_budget_usd
+    agent.budget_warning_threshold = body.budget_warning_threshold
+    agent.budget_reset_day = max(1, min(28, body.budget_reset_day))
+    await db.commit()
+
+    from app.services.activity import log_activity
+    budget_str = f"${body.monthly_budget_usd:.2f}" if body.monthly_budget_usd else "unlimited"
+    await log_activity(
+        db, "user", user.id, "agent.budget_updated", "agent", agent.id,
+        {"agent_name": agent.name, "budget": budget_str, "actor_name": user.name},
+        org_id=org_id,
+    )
+    await db.commit()
+
+    from app.services.budget_service import check_budget
+    status = await check_budget(db, agent_id)
+    return BudgetStatus(
+        budget_usd=status.get("budget_usd"),
+        spent_usd=status.get("spent_usd", 0),
+        remaining_usd=status.get("remaining_usd", 0),
+        percentage=status.get("percentage", 0),
+        warning=status.get("warning", False),
+        exceeded=status.get("exceeded", False),
+        budget_paused=agent.budget_paused or False,
+        budget_pause_reason=agent.budget_pause_reason,
+        reset_day=agent.budget_reset_day or 1,
+        unlimited=status.get("unlimited", True),
+    )
+
+
+@router.post("/{agent_id}/budget/override")
+async def override_agent_budget(
+    agent_id: int,
+    body: dict | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    org_id = getattr(user, "org_id", None)
+    agent = (await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.org_id == org_id)
+    )).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Optionally increase budget
+    if body and body.get("increase_budget_usd"):
+        increase = float(body["increase_budget_usd"])
+        current = float(agent.monthly_budget_usd or 0)
+        agent.monthly_budget_usd = current + increase
+
+    from app.services.budget_service import unpause_agent
+    await unpause_agent(db, agent_id)
+
+    from app.services.activity import log_activity
+    await log_activity(
+        db, "user", user.id, "agent.budget_override", "agent", agent.id,
+        {"agent_name": agent.name, "actor_name": user.name},
+        org_id=org_id,
+    )
+    await db.commit()
+
+    return {"status": "ok", "message": f"Agent {agent.name} budget override applied"}

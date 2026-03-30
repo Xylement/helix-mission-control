@@ -1,5 +1,6 @@
 # HELIX Mission Control — STAGING Environment
 ## Created: March 27, 2026
+## Last updated: March 29, 2026 (v1.2.0 release)
 
 ---
 

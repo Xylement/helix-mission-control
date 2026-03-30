@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Lock,
   Clock,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,6 +36,13 @@ function fmtDate(d: string | null | undefined): string {
     minute: "2-digit",
   });
 }
+
+const STAGE_LABELS: Record<string, { step: number; label: string }> = {
+  pulling_code: { step: 1, label: "Pulling latest code..." },
+  building: { step: 2, label: "Building containers..." },
+  starting: { step: 3, label: "Starting services..." },
+  rolling_back: { step: 0, label: "Rolling back..." },
+};
 
 function StatusBadge({ status }: { status: string }) {
   switch (status) {
@@ -66,6 +74,13 @@ function StatusBadge({ status }: { status: string }) {
           In Progress
         </Badge>
       );
+    case "cancelled":
+      return (
+        <Badge className="bg-gray-500/10 text-gray-500 border-gray-500/20">
+          <Ban className="h-3 w-3 mr-1" />
+          Cancelled
+        </Badge>
+      );
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }
@@ -78,9 +93,13 @@ export default function SystemSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [password, setPassword] = useState("");
+  const [cancelPassword, setCancelPassword] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [updateTakingLong, setUpdateTakingLong] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
 
@@ -129,10 +148,19 @@ export default function SystemSettingsPage() {
     }
   };
 
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setUpdateTakingLong(false);
+  };
+
   const handleUpdate = async () => {
     if (!password) return;
     setUpdating(true);
     setUpdateMessage("Initiating update...");
+    setUpdateTakingLong(false);
 
     try {
       const resp = await api.triggerUpdate(password);
@@ -145,29 +173,41 @@ export default function SystemSettingsPage() {
       pollRef.current = setInterval(async () => {
         const elapsed = Date.now() - pollStartRef.current;
 
+        // Show warning after 5 minutes
+        if (elapsed > 5 * 60 * 1000) {
+          setUpdateTakingLong(true);
+        }
+
         try {
           const data = await api.getVersion();
           setVersionInfo(data);
 
-          // Check if update completed
           const lastStatus = data.last_update_status;
           if (lastStatus?.status === "success") {
             setUpdateMessage(`Update successful! Now running v${data.current_version}`);
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
+            stopPolling();
             loadHistory();
           } else if (lastStatus?.status === "rolled_back") {
             setUpdateMessage(
               `Update failed and was automatically rolled back to v${data.current_version}. ${lastStatus.message || "Check the changelog for compatibility notes."}`
             );
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
+            stopPolling();
             loadHistory();
           } else if (lastStatus?.status === "failed") {
             setUpdateMessage(`Update failed: ${lastStatus.error || lastStatus.message || "Unknown error"}`);
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
+            stopPolling();
             loadHistory();
+          } else if (lastStatus?.status === "cancelled") {
+            setUpdateMessage("Update was cancelled.");
+            stopPolling();
+            loadHistory();
+          } else if (lastStatus?.status === "in_progress" && lastStatus.message) {
+            const stageInfo = lastStatus.stage ? STAGE_LABELS[lastStatus.stage] : null;
+            if (stageInfo) {
+              setUpdateMessage(`Step ${stageInfo.step}/3: ${stageInfo.label}`);
+            } else {
+              setUpdateMessage(lastStatus.message);
+            }
           }
         } catch {
           // Backend might be restarting
@@ -175,8 +215,7 @@ export default function SystemSettingsPage() {
             setUpdateMessage(
               "Update is taking longer than expected. The system may be restarting. Please refresh in a few minutes."
             );
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
+            stopPolling();
           }
         }
       }, 15000);
@@ -186,6 +225,22 @@ export default function SystemSettingsPage() {
       setUpdateMessage(null);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!cancelPassword) return;
+    setCancelling(true);
+    try {
+      await api.cancelUpdate(cancelPassword);
+      setShowCancelDialog(false);
+      setCancelPassword("");
+      toast.success("Cancel signal sent to update daemon");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to cancel update";
+      toast.error(msg);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -210,6 +265,8 @@ export default function SystemSettingsPage() {
       </div>
     );
   }
+
+  const isPolling = !!pollRef.current;
 
   return (
     <div className="animate-in-page p-6 max-w-3xl mx-auto space-y-6">
@@ -257,16 +314,28 @@ export default function SystemSettingsPage() {
                 </div>
               </div>
 
-              {/* Update message */}
+              {/* Update progress message */}
               {updateMessage && (
                 <div className="rounded-lg border border-border/50 bg-muted/30 p-3">
                   <div className="flex items-start gap-2">
-                    {pollRef.current ? (
+                    {isPolling ? (
                       <Loader2 className="h-4 w-4 animate-spin text-blue-500 mt-0.5 shrink-0" />
                     ) : (
                       <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
                     )}
                     <p className="text-sm">{updateMessage}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Timeout warning */}
+              {updateTakingLong && isPolling && (
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
+                  <div className="flex gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-sm text-amber-700 dark:text-amber-400">
+                      Update is taking longer than expected. You can cancel and try again.
+                    </p>
                   </div>
                 </div>
               )}
@@ -295,10 +364,21 @@ export default function SystemSettingsPage() {
                   <Button
                     size="sm"
                     onClick={() => setShowUpdateDialog(true)}
-                    disabled={!!pollRef.current}
+                    disabled={isPolling}
                   >
                     <ArrowUpCircle className="h-4 w-4 mr-2" />
                     Update to v{versionInfo.latest_version}
+                  </Button>
+                )}
+                {isPolling && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-red-500/30 text-red-500 hover:bg-red-500/10"
+                    onClick={() => setShowCancelDialog(true)}
+                  >
+                    <Ban className="h-4 w-4 mr-2" />
+                    Cancel Update
                   </Button>
                 )}
               </div>
@@ -360,10 +440,10 @@ export default function SystemSettingsPage() {
             <DialogTitle>Update to v{versionInfo?.latest_version}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
               <div className="flex gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-sm text-amber-200/80">
+                <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-700 dark:text-amber-400">
                   The system will be unavailable for ~2 minutes during the update.
                   A rollback will happen automatically if the update fails.
                 </p>
@@ -394,6 +474,56 @@ export default function SystemSettingsPage() {
                   <ArrowUpCircle className="h-4 w-4 mr-2" />
                 )}
                 Update Now
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Update Confirmation Dialog */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel Update</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
+              <div className="flex gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  This will attempt to cancel the in-progress update. The system may be left in a partially updated state.
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1.5">
+                Confirm your password
+              </label>
+              <input
+                type="password"
+                value={cancelPassword}
+                onChange={(e) => setCancelPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCancel()}
+                placeholder="Enter your password"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
+                Back
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleCancel}
+                disabled={cancelling || !cancelPassword}
+              >
+                {cancelling ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Ban className="h-4 w-4 mr-2" />
+                )}
+                Cancel Update
               </Button>
             </div>
           </div>

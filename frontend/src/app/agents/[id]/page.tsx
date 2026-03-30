@@ -8,6 +8,7 @@ import {
   api,
   type Agent,
   type Department,
+  type Board,
   type AgentStats,
   type AgentStatusLog,
   type AgentTaskItem,
@@ -16,6 +17,9 @@ import {
   type AIModel,
   type InstalledPlugin,
   type AgentPluginItem,
+  type AgentSchedule,
+  type AgentScheduleCreate,
+  type Trace,
 } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -56,8 +60,21 @@ import {
   Pencil,
   Plug,
   Trash2,
+  DollarSign,
+  AlertTriangle,
+  CalendarClock,
+  Play,
+  Power,
+  Repeat,
+  Activity,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ExportTemplateModal } from "@/components/marketplace/ExportTemplateModal";
 
 const STATUS_BADGE: Record<string, { color: string; label: string }> = {
@@ -646,6 +663,565 @@ function AgentPluginsTab({
 }
 
 // ---------------------------------------------------------------------------
+// Schedules tab component
+// ---------------------------------------------------------------------------
+
+const SCHEDULE_TYPE_LABELS: Record<string, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+  interval: "Every X min",
+};
+
+const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+function AgentSchedulesTab({
+  agentId,
+  schedules,
+  boards,
+  isAdmin,
+  onReload,
+}: {
+  agentId: number;
+  schedules: AgentSchedule[];
+  boards: Board[];
+  isAdmin: boolean;
+  onReload: () => void;
+}) {
+  const [showDialog, setShowDialog] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<AgentSchedule | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Form state
+  const [formName, setFormName] = useState("");
+  const [formBoardId, setFormBoardId] = useState<number>(0);
+  const [formType, setFormType] = useState("daily");
+  const [formTime, setFormTime] = useState("09:00");
+  const [formDays, setFormDays] = useState<string[]>([]);
+  const [formInterval, setFormInterval] = useState("60");
+  const [formTitleTemplate, setFormTitleTemplate] = useState("");
+  const [formPrompt, setFormPrompt] = useState("");
+  const [formPriority, setFormPriority] = useState("medium");
+  const [formRequiresApproval, setFormRequiresApproval] = useState(true);
+  const [formTags, setFormTags] = useState("");
+
+  const openCreate = () => {
+    setEditingSchedule(null);
+    setFormName("");
+    setFormBoardId(boards[0]?.id || 0);
+    setFormType("daily");
+    setFormTime("09:00");
+    setFormDays([]);
+    setFormInterval("60");
+    setFormTitleTemplate("Daily task — {date}");
+    setFormPrompt("");
+    setFormPriority("medium");
+    setFormRequiresApproval(true);
+    setFormTags("");
+    setShowDialog(true);
+  };
+
+  const openEdit = (s: AgentSchedule) => {
+    setEditingSchedule(s);
+    setFormName(s.name);
+    setFormBoardId(s.board_id);
+    setFormType(s.schedule_type);
+    setFormTime(s.schedule_time);
+    setFormDays(s.schedule_days || []);
+    setFormInterval(String(s.schedule_interval_minutes || 60));
+    setFormTitleTemplate(s.task_title_template);
+    setFormPrompt(s.task_prompt);
+    setFormPriority(s.priority);
+    setFormRequiresApproval(s.requires_approval);
+    setFormTags((s.tags || []).join(", "));
+    setShowDialog(true);
+  };
+
+  const handleSave = async () => {
+    if (!formName.trim() || !formTitleTemplate.trim() || !formPrompt.trim() || !formBoardId) return;
+    setSaving(true);
+    try {
+      const data: AgentScheduleCreate = {
+        name: formName.trim(),
+        board_id: formBoardId,
+        task_title_template: formTitleTemplate.trim(),
+        task_prompt: formPrompt.trim(),
+        schedule_type: formType,
+        schedule_time: formTime,
+        schedule_days: formType === "weekly" || formType === "monthly" ? formDays : [],
+        schedule_interval_minutes: formType === "interval" ? Math.max(15, parseInt(formInterval) || 60) : undefined,
+        requires_approval: formRequiresApproval,
+        priority: formPriority,
+        tags: formTags.split(",").map((t) => t.trim()).filter(Boolean),
+      };
+      if (editingSchedule) {
+        await api.updateAgentSchedule(agentId, editingSchedule.id, data);
+        toast.success("Schedule updated");
+      } else {
+        await api.createAgentSchedule(agentId, data);
+        toast.success("Schedule created");
+      }
+      setShowDialog(false);
+      onReload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save schedule");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggle = async (s: AgentSchedule) => {
+    setTogglingId(s.id);
+    try {
+      await api.toggleAgentSchedule(agentId, s.id);
+      toast.success(s.is_active ? "Schedule paused" : "Schedule activated");
+      onReload();
+    } catch {
+      toast.error("Failed to toggle schedule");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleRunNow = async (s: AgentSchedule) => {
+    setRunningId(s.id);
+    try {
+      const result = await api.runScheduleNow(agentId, s.id);
+      toast.success(`Task created (#${result.task_id})`);
+      onReload();
+    } catch {
+      toast.error("Failed to run schedule");
+    } finally {
+      setRunningId(null);
+    }
+  };
+
+  const handleDelete = async (s: AgentSchedule) => {
+    setDeletingId(s.id);
+    try {
+      await api.deleteAgentSchedule(agentId, s.id);
+      toast.success("Schedule deleted");
+      onReload();
+    } catch {
+      toast.error("Failed to delete schedule");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const fmt = (d: string | null) =>
+    d ? new Date(d).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "short" }) : "—";
+
+  const toggleDay = (day: string) => {
+    setFormDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <CalendarClock className="h-4 w-4" />
+              Schedules ({schedules.length})
+            </h3>
+            {isAdmin && (
+              <Button size="sm" variant="outline" onClick={openCreate}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Schedule
+              </Button>
+            )}
+          </div>
+
+          {schedules.length === 0 ? (
+            <div className="text-center py-8">
+              <CalendarClock className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
+              <p className="text-muted-foreground text-sm">No schedules configured</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Set up recurring tasks for this agent to run automatically
+              </p>
+              {isAdmin && (
+                <Button size="sm" variant="outline" className="mt-3" onClick={openCreate}>
+                  Create a schedule
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {schedules.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-3 rounded-lg border p-3 group"
+                >
+                  <div className={`h-9 w-9 rounded-lg flex items-center justify-center text-base flex-shrink-0 ${
+                    s.is_active ? "bg-blue-500/10" : "bg-muted"
+                  }`}>
+                    <Repeat className={`h-4 w-4 ${s.is_active ? "text-blue-500" : "text-muted-foreground"}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{s.name}</span>
+                      <Badge variant="outline" className="text-[10px] h-5">
+                        {SCHEDULE_TYPE_LABELS[s.schedule_type] || s.schedule_type}
+                        {s.schedule_type === "interval" ? ` (${s.schedule_interval_minutes}m)` : ` ${s.schedule_time}`}
+                      </Badge>
+                      {!s.is_active && (
+                        <Badge variant="secondary" className="text-[10px] h-5">Paused</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                      <span>Next: {s.is_active ? fmt(s.next_run_at) : "—"}</span>
+                      <span>Last: {fmt(s.last_run_at)}</span>
+                      <span>Runs: {s.run_count}</span>
+                    </div>
+                    {s.schedule_type === "weekly" && s.schedule_days.length > 0 && (
+                      <div className="flex gap-1 mt-1">
+                        {s.schedule_days.map((d) => (
+                          <span key={d} className="text-[10px] bg-muted px-1.5 py-0.5 rounded capitalize">
+                            {d.slice(0, 3)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        title="Run now"
+                        disabled={runningId === s.id}
+                        onClick={() => handleRunNow(s)}
+                      >
+                        {runningId === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        title={s.is_active ? "Pause" : "Activate"}
+                        disabled={togglingId === s.id}
+                        onClick={() => handleToggle(s)}
+                      >
+                        {togglingId === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className={`h-3.5 w-3.5 ${s.is_active ? "text-green-500" : "text-muted-foreground"}`} />}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        title="Edit"
+                        onClick={() => openEdit(s)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                        title="Delete"
+                        disabled={deletingId === s.id}
+                        onClick={() => handleDelete(s)}
+                      >
+                        {deletingId === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create/Edit Schedule Dialog */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingSchedule ? "Edit Schedule" : "Create Schedule"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-sm font-medium">Schedule Name</label>
+              <Input
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. Morning content check"
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Board</label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+                value={formBoardId}
+                onChange={(e) => setFormBoardId(Number(e.target.value))}
+              >
+                <option value={0}>Select board...</option>
+                {boards.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Schedule Type</label>
+              <div className="grid grid-cols-4 gap-2 mt-1">
+                {(["daily", "weekly", "monthly", "interval"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setFormType(t)}
+                    className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                      formType === t ? "bg-primary/10 border-primary/30 text-primary" : "hover:bg-accent"
+                    }`}
+                  >
+                    {SCHEDULE_TYPE_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {formType !== "interval" && (
+              <div>
+                <label className="text-sm font-medium">Time</label>
+                <Input
+                  type="time"
+                  value={formTime}
+                  onChange={(e) => setFormTime(e.target.value)}
+                  className="mt-1 w-32"
+                />
+                <p className="text-xs text-muted-foreground mt-1">In your organization&apos;s timezone</p>
+              </div>
+            )}
+
+            {formType === "weekly" && (
+              <div>
+                <label className="text-sm font-medium">Days of Week</label>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {WEEKDAYS.map((day) => (
+                    <button
+                      key={day}
+                      onClick={() => toggleDay(day)}
+                      className={`rounded-md border px-3 py-1.5 text-xs capitalize transition-colors ${
+                        formDays.includes(day) ? "bg-primary/10 border-primary/30 text-primary" : "hover:bg-accent"
+                      }`}
+                    >
+                      {day.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {formType === "monthly" && (
+              <div>
+                <label className="text-sm font-medium">Days of Month</label>
+                <Input
+                  value={formDays.join(", ")}
+                  onChange={(e) => setFormDays(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                  placeholder="e.g. 1, 15"
+                  className="mt-1"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Comma-separated day numbers</p>
+              </div>
+            )}
+
+            {formType === "interval" && (
+              <div>
+                <label className="text-sm font-medium">Interval (minutes)</label>
+                <Input
+                  type="number"
+                  min={15}
+                  value={formInterval}
+                  onChange={(e) => setFormInterval(e.target.value)}
+                  className="mt-1 w-32"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Minimum 15 minutes</p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-sm font-medium">Task Title Template</label>
+              <Input
+                value={formTitleTemplate}
+                onChange={(e) => setFormTitleTemplate(e.target.value)}
+                placeholder="e.g. Daily content review — {date}"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Variables: {"{date}"}, {"{week}"}, {"{month}"}, {"{day}"}
+              </p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Task Prompt</label>
+              <Textarea
+                value={formPrompt}
+                onChange={(e) => setFormPrompt(e.target.value)}
+                placeholder="The instruction for the agent when this schedule fires..."
+                rows={4}
+                className="mt-1"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Priority</label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm mt-1"
+                  value={formPriority}
+                  onChange={(e) => setFormPriority(e.target.value)}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Tags</label>
+                <Input
+                  value={formTags}
+                  onChange={(e) => setFormTags(e.target.value)}
+                  placeholder="tag1, tag2"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="requires-approval"
+                checked={formRequiresApproval}
+                onChange={(e) => setFormRequiresApproval(e.target.checked)}
+                className="rounded"
+              />
+              <label htmlFor="requires-approval" className="text-sm">
+                Requires approval before completion
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+              <Button
+                onClick={handleSave}
+                disabled={saving || !formName.trim() || !formTitleTemplate.trim() || !formPrompt.trim() || !formBoardId}
+              >
+                {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                {editingSchedule ? "Update Schedule" : "Create Schedule"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Traces tab component
+// ---------------------------------------------------------------------------
+
+function AgentTracesTab({ agentId }: { agentId: number }) {
+  const router = useRouter();
+  const [traces, setTraces] = useState<Trace[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getAgentTraces(agentId, 10)
+      .then(setTraces)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [agentId]);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-6 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (traces.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center text-muted-foreground">
+          No execution traces yet. Traces are created when tasks are dispatched to this agent.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const statusColors: Record<string, string> = {
+    running: "bg-blue-500/10 text-blue-600",
+    completed: "bg-green-500/10 text-green-600",
+    failed: "bg-red-500/10 text-red-600",
+    cancelled: "bg-muted text-muted-foreground",
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Status</TableHead>
+                <TableHead>Task</TableHead>
+                <TableHead>Model</TableHead>
+                <TableHead>Steps</TableHead>
+                <TableHead>Cost</TableHead>
+                <TableHead>Duration</TableHead>
+                <TableHead>Started</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {traces.map((trace) => (
+                <TableRow
+                  key={trace.id}
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/tasks/${trace.task_id}/traces`)}
+                >
+                  <TableCell>
+                    <Badge className={statusColors[trace.trace_status] || ""}>
+                      {trace.trace_status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">#{trace.task_id}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {trace.model_name || "-"}
+                  </TableCell>
+                  <TableCell>{trace.total_steps}</TableCell>
+                  <TableCell className="text-xs">${trace.total_estimated_cost_usd.toFixed(4)}</TableCell>
+                  <TableCell className="text-xs">
+                    {trace.duration_ms != null
+                      ? trace.duration_ms < 1000
+                        ? `${trace.duration_ms}ms`
+                        : `${(trace.duration_ms / 1000).toFixed(1)}s`
+                      : "-"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(trace.started_at).toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -696,8 +1272,20 @@ export default function AgentDetailPage() {
   const [agentPluginsList, setAgentPluginsList] = useState<AgentPluginItem[]>([]);
   const [allPlugins, setAllPlugins] = useState<InstalledPlugin[]>([]);
 
+  // Schedules
+  const [agentSchedules, setAgentSchedules] = useState<AgentSchedule[]>([]);
+  const [allBoards, setAllBoards] = useState<Board[]>([]);
+
+  // Budget
+  const [budgetStatus, setBudgetStatus] = useState<import("@/lib/api").BudgetStatus | null>(null);
+  const [showBudgetDialog, setShowBudgetDialog] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
+  const [budgetThreshold, setBudgetThreshold] = useState("80");
+  const [budgetResetDay, setBudgetResetDay] = useState("1");
+  const [savingBudget, setSavingBudget] = useState(false);
+
   // Tab state
-  const [activeTab, setActiveTab] = useState<"active" | "history" | "skills" | "plugins">("active");
+  const [activeTab, setActiveTab] = useState<"active" | "history" | "skills" | "plugins" | "schedules" | "traces">("active");
 
   const loadData = useCallback(async () => {
     try {
@@ -712,6 +1300,8 @@ export default function AgentDetailPage() {
       setStats(statsData);
       setStatusLog(logData);
       setEditPrompt(agentData.system_prompt || "");
+      // Load budget
+      api.getAgentBudget(agentId).then(setBudgetStatus).catch(() => {});
     } catch {
       toast.error("Failed to load agent data");
     } finally {
@@ -767,6 +1357,17 @@ export default function AgentDetailPage() {
     } catch { /* ignore */ }
   }, [agentId]);
 
+  const loadSchedules = useCallback(async () => {
+    try {
+      const [scheds, bds] = await Promise.all([
+        api.getAgentSchedules(agentId),
+        api.boards(),
+      ]);
+      setAgentSchedules(scheds);
+      setAllBoards(bds);
+    } catch { /* ignore */ }
+  }, [agentId]);
+
   useEffect(() => {
     loadData();
     loadActiveTasks();
@@ -774,7 +1375,8 @@ export default function AgentDetailPage() {
     loadSkills();
     loadModels();
     loadAgentPlugins();
-  }, [loadData, loadActiveTasks, loadHistoryTasks, loadSkills, loadModels, loadAgentPlugins]);
+    loadSchedules();
+  }, [loadData, loadActiveTasks, loadHistoryTasks, loadSkills, loadModels, loadAgentPlugins, loadSchedules]);
 
   // Real-time: agent status changes
   useEffect(() => {
@@ -1016,6 +1618,163 @@ export default function AgentDetailPage() {
         </div>
       </div>
 
+      {/* Budget Paused Banner */}
+      {agent.budget_paused && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-red-400">Agent Paused — Budget Exceeded</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{agent.budget_pause_reason}</p>
+            </div>
+          </div>
+          {isAdmin && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-500/30 hover:bg-red-500/20"
+              onClick={async () => {
+                try {
+                  await api.overrideAgentBudget(agentId);
+                  toast.success("Budget override applied");
+                  loadData();
+                } catch { toast.error("Failed to override budget"); }
+              }}
+            >
+              Override & Resume
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Budget Card */}
+      {budgetStatus && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <DollarSign className="h-4 w-4" /> Token Budget
+              </h3>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setBudgetInput(budgetStatus.budget_usd?.toString() || "");
+                    setBudgetThreshold(String(Math.round((budgetStatus.unlimited ? 80 : (budgetStatus.percentage > 0 ? 80 : 80)))));
+                    setBudgetResetDay(String(budgetStatus.reset_day));
+                    setShowBudgetDialog(true);
+                  }}
+                >
+                  {budgetStatus.unlimited ? "Set Budget" : "Edit Budget"}
+                </Button>
+              )}
+            </div>
+            {budgetStatus.unlimited ? (
+              <p className="text-sm text-muted-foreground">No budget set — unlimited spending</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    ${budgetStatus.spent_usd.toFixed(2)} / ${budgetStatus.budget_usd?.toFixed(2)}
+                  </span>
+                  <span className={
+                    budgetStatus.exceeded ? "text-red-400 font-medium" :
+                    budgetStatus.warning ? "text-amber-400 font-medium" :
+                    "text-muted-foreground"
+                  }>
+                    {budgetStatus.percentage.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      budgetStatus.exceeded ? "bg-red-500" :
+                      budgetStatus.warning ? "bg-amber-500" :
+                      "bg-blue-500"
+                    }`}
+                    style={{ width: `${Math.min(100, budgetStatus.percentage)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>${budgetStatus.remaining_usd.toFixed(2)} remaining</span>
+                  <span>Resets on day {budgetStatus.reset_day}</span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Budget Dialog */}
+      <Dialog open={showBudgetDialog} onOpenChange={setShowBudgetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Agent Budget</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-sm font-medium">Monthly Budget (USD)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="e.g. 10.00 (empty = unlimited)"
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(e.target.value)}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Leave empty to remove budget (unlimited).</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Warning Threshold (%)</label>
+              <Input
+                type="number"
+                min="1"
+                max="99"
+                value={budgetThreshold}
+                onChange={(e) => setBudgetThreshold(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Reset Day of Month</label>
+              <Input
+                type="number"
+                min="1"
+                max="28"
+                value={budgetResetDay}
+                onChange={(e) => setBudgetResetDay(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowBudgetDialog(false)}>Cancel</Button>
+              <Button
+                disabled={savingBudget}
+                onClick={async () => {
+                  setSavingBudget(true);
+                  try {
+                    await api.updateAgentBudget(agentId, {
+                      monthly_budget_usd: budgetInput ? parseFloat(budgetInput) : null,
+                      budget_warning_threshold: parseInt(budgetThreshold) / 100,
+                      budget_reset_day: parseInt(budgetResetDay) || 1,
+                    });
+                    toast.success("Budget updated");
+                    setShowBudgetDialog(false);
+                    loadData();
+                  } catch { toast.error("Failed to update budget"); }
+                  finally { setSavingBudget(false); }
+                }}
+              >
+                {savingBudget && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                Save Budget
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Performance Stats Cards */}
       {stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1134,6 +1893,24 @@ export default function AgentDetailPage() {
           >
             <Plug className="mr-1 h-3.5 w-3.5" />
             Plugins ({agentPluginsList.length})
+          </Button>
+          <Button
+            variant={activeTab === "schedules" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("schedules")}
+            className="rounded-md"
+          >
+            <CalendarClock className="mr-1 h-3.5 w-3.5" />
+            Schedules ({agentSchedules.length})
+          </Button>
+          <Button
+            variant={activeTab === "traces" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("traces")}
+            className="rounded-md"
+          >
+            <Activity className="mr-1 h-3.5 w-3.5" />
+            Traces
           </Button>
         </div>
 
@@ -1272,6 +2049,20 @@ export default function AgentDetailPage() {
             isAdmin={isAdmin}
             onReload={loadAgentPlugins}
           />
+        )}
+
+        {activeTab === "schedules" && (
+          <AgentSchedulesTab
+            agentId={agentId}
+            schedules={agentSchedules}
+            boards={allBoards}
+            isAdmin={isAdmin}
+            onReload={loadSchedules}
+          />
+        )}
+
+        {activeTab === "traces" && (
+          <AgentTracesTab agentId={agentId} />
         )}
       </div>
 

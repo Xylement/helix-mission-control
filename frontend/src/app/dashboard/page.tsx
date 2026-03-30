@@ -10,6 +10,7 @@ import {
   type Department,
   type Board,
   type Agent,
+  type GoalTree,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useWS } from "@/contexts/WebSocketContext";
@@ -43,6 +44,7 @@ import {
   User,
   Cpu,
   Activity as ActivityIcon,
+  Target,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -298,6 +300,7 @@ export default function DashboardPage() {
   const [createAgentId, setCreateAgentId] = useState<string>("");
   const [createDueDate, setCreateDueDate] = useState("");
   const [creating, setCreating] = useState(false);
+  const [missions, setMissions] = useState<GoalTree[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -307,6 +310,8 @@ export default function DashboardPage() {
       ]);
       setStats(s);
       setActivities(a.activities);
+      // Load active missions for goals section
+      api.getGoalTree("active").then(setMissions).catch(() => {});
     } catch {
       // silent
     } finally {
@@ -570,6 +575,53 @@ export default function DashboardPage() {
           accent="teal"
         />
       </div>
+
+      {/* Active Goals */}
+      {missions.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" />
+              Active Goals
+            </h2>
+            <Link href="/goals" className="text-sm text-primary hover:underline flex items-center gap-1">
+              View all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {missions.map((mission) => (
+              <Card key={mission.id} className="border-l-4 border-l-purple-500 hover:shadow-md transition-all duration-200">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-semibold text-sm line-clamp-2">{mission.title}</h3>
+                    <Badge variant="outline" className="bg-purple-500/15 text-purple-600 dark:text-purple-400 text-xs shrink-0 ml-2">Mission</Badge>
+                  </div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex-1 bg-muted rounded-full h-2">
+                      <div className="bg-purple-500 h-2 rounded-full transition-all" style={{ width: `${mission.progress}%` }} />
+                    </div>
+                    <span className="text-xs text-muted-foreground">{mission.progress}%</span>
+                  </div>
+                  {mission.children && mission.children.length > 0 && (
+                    <div className="space-y-1.5">
+                      {mission.children.slice(0, 3).map((obj) => (
+                        <div key={obj.id} className="flex items-center gap-2 text-xs">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                          <span className="text-muted-foreground truncate flex-1">{obj.title}</span>
+                          <span className="text-muted-foreground">{obj.progress}%</span>
+                        </div>
+                      ))}
+                      {mission.children.length > 3 && (
+                        <p className="text-xs text-muted-foreground">+{mission.children.length - 3} more</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Department Cards */}
       {stats?.departments && stats.departments.length > 0 && (

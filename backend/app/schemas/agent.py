@@ -14,6 +14,9 @@ class AgentOut(BaseModel):
     ai_model_id: int | None = None
     model_provider: str | None = None
     model_name: str | None = None
+    monthly_budget_usd: float | None = None
+    budget_paused: bool = False
+    budget_pause_reason: str | None = None
     created_at: datetime
 
     class Config:
@@ -36,3 +39,22 @@ class AgentUpdate(BaseModel):
     ai_model_id: int | None = None
     model_provider: str | None = None
     model_name: str | None = None
+
+
+class BudgetStatus(BaseModel):
+    budget_usd: float | None = None
+    spent_usd: float = 0.0
+    remaining_usd: float = 0.0
+    percentage: float = 0.0
+    warning: bool = False
+    exceeded: bool = False
+    budget_paused: bool = False
+    budget_pause_reason: str | None = None
+    reset_day: int = 1
+    unlimited: bool = True
+
+
+class BudgetUpdate(BaseModel):
+    monthly_budget_usd: float | None = None
+    budget_warning_threshold: float = 0.80
+    budget_reset_day: int = 1
