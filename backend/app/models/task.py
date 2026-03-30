@@ -22,6 +22,7 @@ class Task(Base):
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), server_default="{}", nullable=True)
+    goal_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True, index=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -36,4 +37,5 @@ class Task(Base):
     board: Mapped["Board"] = relationship(back_populates="tasks")  # noqa: F821
     assigned_agent: Mapped["Agent | None"] = relationship()  # noqa: F821
     created_by: Mapped["User"] = relationship()  # noqa: F821
+    goal: Mapped["Goal | None"] = relationship()  # noqa: F821
     comments: Mapped[list["Comment"]] = relationship(back_populates="task", order_by="Comment.created_at")  # noqa: F821

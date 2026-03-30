@@ -1,6 +1,6 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
-## Last updated: March 30, 2026 (update daemon hardening + white label reset)
+## Last updated: March 30, 2026 (goal hierarchy with strategic context injection)
 
 ---
 
@@ -59,7 +59,7 @@
 
 **agents** — id (UUID PK), org_id (FK organizations), name (unique per org), role_title, department_id (FK departments), primary_board_id (FK boards), system_prompt, status (online|offline|busy|error), execution_mode (auto|manual), model_provider, model_name, model_api_key_encrypted, ai_model_id (FK ai_models), marketplace_template_slug, monthly_budget_usd (DECIMAL nullable), budget_warning_threshold (DECIMAL default 0.80), budget_paused (bool default false), budget_pause_reason (VARCHAR 200), budget_reset_day (int default 1), last_seen_at, openclaw_session_id, created_at
 
-**tasks** — id (UUID PK), board_id (FK boards), title, description, status (todo|in_progress|review|approved|rejected|done|cancelled), priority (low|medium|high|urgent), assigned_agent_id (FK agents nullable), created_by_user_id (FK users), due_date, requires_approval (bool), approved_by_user_id, approved_at, result (text), tags (TEXT[] DEFAULT '{}'), metadata (JSONB), archived (bool DEFAULT false), started_at, completed_at, created_at, updated_at
+**tasks** — id (UUID PK), board_id (FK boards), title, description, status (todo|in_progress|review|approved|rejected|done|cancelled), priority (low|medium|high|urgent), assigned_agent_id (FK agents nullable), created_by_user_id (FK users), due_date, requires_approval (bool), approved_by_user_id, approved_at, result (text), tags (TEXT[] DEFAULT '{}'), metadata (JSONB), goal_id (FK goals SET NULL nullable, indexed), archived (bool DEFAULT false), started_at, completed_at, created_at, updated_at
 
 **comments** — id (UUID PK), task_id (FK tasks), user_id (FK users nullable), agent_id (FK agents nullable), author_type, author_name, content, mentions (JSONB), created_at
 
@@ -91,6 +91,10 @@
 
 **white_label_config** — id (UUID PK), org_id (FK organizations UNIQUE), product_name (VARCHAR 100, default "HELIX Mission Control"), product_short_name (VARCHAR 30, default "HELIX"), company_name (VARCHAR 100, default "HelixNode"), logo_url (TEXT nullable), favicon_url (TEXT nullable), accent_color (VARCHAR 7, default "#3b82f6"), accent_color_secondary (VARCHAR 7, default "#8b5cf6"), login_title (VARCHAR 200, default "Sign in to Mission Control"), login_subtitle (TEXT nullable), footer_text (VARCHAR 200, default "Powered by HelixNode"), loading_animation_enabled (BOOLEAN default true), loading_animation_text (VARCHAR 30, default "HELIX"), custom_css (TEXT nullable), docs_url (TEXT default "https://docs.helixnode.tech"), support_email (VARCHAR 200 nullable), support_url (TEXT nullable), marketplace_visible (BOOLEAN default true), created_at, updated_at
 
+### Goals Tables
+
+**goals** — id (SERIAL PK), org_id (FK organizations NOT NULL), parent_goal_id (FK goals CASCADE nullable), title (VARCHAR 500), description (TEXT), goal_type (VARCHAR 20: mission|objective|key_result), status (VARCHAR 20: active|completed|paused|cancelled), owner_type (VARCHAR 10: user|agent|NULL), owner_id (INT nullable polymorphic), target_date (DATE), progress (INT 0-100), department_id (FK departments SET NULL), board_id (FK boards SET NULL), sort_order (INT), created_by (FK users), created_at, updated_at. Indexes: org_id, parent_goal_id, board_id
+
 ### Skills Tables
 
 **skills** — id (UUID PK), org_id (FK organizations), name (200), slug (100 unique per org), version (20), description, category (50), tags (TEXT[]), content (TEXT markdown), frontmatter (JSONB), activation_mode (always|board|tag), activation_boards (UUID[]), activation_tags (TEXT[]), created_by (FK users), is_system (bool), marketplace_template_id (100), created_at, updated_at
@@ -98,6 +102,12 @@
 **agent_skills** — id (UUID PK), agent_id (FK agents CASCADE), skill_id (FK skills CASCADE), assigned_at, assigned_by (FK users). UNIQUE(agent_id, skill_id)
 
 **skill_attachments** — id (UUID PK), skill_id (FK skills CASCADE), filename, original_filename, description, file_size, mime_type, storage_path, uploaded_by (FK users), uploaded_at
+
+### Execution Trace Tables
+
+**execution_traces** — id (UUID PK), org_id (FK organizations), task_id (FK tasks CASCADE), agent_id (FK agents CASCADE), trace_status (VARCHAR 20: running|completed|failed|cancelled), total_steps (INT), total_input_tokens (INT), total_output_tokens (INT), total_estimated_cost_usd (DECIMAL 10,6), model_provider (VARCHAR 50), model_name (VARCHAR 100), error_message (TEXT), started_at, completed_at, duration_ms (INT), created_at. Indexes: task_id, agent_id, org_id
+
+**execution_trace_steps** — id (UUID PK), trace_id (FK execution_traces CASCADE), step_number (INT), step_type (VARCHAR 30: reasoning|tool_call|tool_result|error|system), content (TEXT), tool_name (VARCHAR 200), tool_input (JSONB), tool_output (TEXT), input_tokens (INT), output_tokens (INT), estimated_cost_usd (DECIMAL 10,6), duration_ms (INT), created_at. Index: trace_id
 
 ### Schedule Tables
 
@@ -182,7 +192,9 @@
 | White Label | routers/white_label.py | Branding API (7 endpoints), license-gated |
 | Email Templates | services/email_templates.py | Branded transactional emails via Resend |
 | Budget Service | services/budget_service.py | Per-agent token budget enforcement, auto-pause, period reset |
+| Goal Service | services/goal_service.py | Goal tree queries (CTE), context injection for prompts, auto-progress calculation |
 | Schedule Service | services/schedule_service.py | Recurring task scheduling — calculate next run, execute schedules, background checker |
+| Trace Service | services/trace_service.py | Execution trace CRUD — create/complete traces, add steps, query by task/agent, org-scoped stats |
 | Encryption | utils/encryption.py | Fernet encrypt/decrypt (JWT_SECRET derived) |
 
 ---
@@ -220,6 +232,9 @@
 - `app/reset-password/page.tsx` — Reset password with token
 - `components/onboarding/branding-step.tsx` — Onboarding branding step
 - `app/costs/page.tsx` — Cost dashboard (spend by agent, daily chart, top tasks)
+- `app/tasks/[id]/traces/page.tsx` — Execution trace viewer (timeline of LLM steps per task)
+- `components/trace-viewer.tsx` — Trace detail component (header + step timeline)
+- `components/trace-step.tsx` — Individual trace step (reasoning, tool_call, tool_result, error, system)
 
 ---
 
@@ -235,6 +250,7 @@
 8. HTTP-first Nginx then Certbot (SSL chicken-and-egg pattern)
 9. Docker env vars must be explicit in docker-compose.yml
 10. helix user has no sudo
+11. Goal context injects into agent prompts at dispatch time — same pattern as skills (resolve → build context → prepend to prompt)
 
 ---
 
@@ -267,6 +283,59 @@ After every Claude Code session that creates/modifies files:
 ---
 
 ## 11. Recent Changes
+
+### March 30, 2026 — Deep Execution Tracing
+
+**Feature:** Log every LLM reasoning step, tool call, and tool result during agent task execution. Drill-down trace viewer on task detail shows exactly what the agent did, why, and at what cost.
+
+**New files:**
+- `backend/app/models/execution_trace.py` — SQLAlchemy models for execution_traces and execution_trace_steps
+- `backend/app/schemas/execution_trace.py` — TraceOut, TraceStepOut, TraceDetailOut, TraceStatsOut
+- `backend/app/routers/traces.py` — GET /tasks/{id}/traces, GET /traces/{id}, GET /agents/{id}/traces, GET /traces/stats
+- `backend/app/services/trace_service.py` — create_trace, add_trace_step, complete_trace, get_trace, get_traces_for_task/agent, get_trace_stats
+- `frontend/src/app/tasks/[id]/traces/page.tsx` — Trace viewer page (auto-expand single trace, list for retries)
+- `frontend/src/app/tasks/[id]/traces/layout.tsx` — Layout with sidebar
+- `frontend/src/components/trace-viewer.tsx` — Trace detail (header + timeline of steps)
+- `frontend/src/components/trace-step.tsx` — Individual step rendering (reasoning/tool_call/tool_result/error/system)
+
+**Modified files:**
+- `backend/app/main.py` — CREATE TABLE for execution_traces + execution_trace_steps, register traces router
+- `backend/app/services/gateway.py` — Trace creation before dispatch, step buffering during streaming, non-blocking flush on completion/error
+- `backend/app/schemas/task.py` — Added traces_count field to TaskOut
+- `backend/app/routers/tasks.py` — Attach traces_count in get_task endpoint
+- `frontend/src/lib/api.ts` — Trace/TraceStep/TraceDetail/TraceStats types, getTaskTraces/getTraceDetail/getAgentTraces/getTraceStats methods, traces_count on Task
+- `frontend/src/app/boards/[id]/page.tsx` — "View Execution Trace" button on task detail when traces exist
+- `frontend/src/app/agents/[id]/page.tsx` — "Traces" tab showing recent traces for the agent
+- `frontend/src/app/costs/page.tsx` — "traces" link next to each agent in spend-by-agent section
+
+### March 30, 2026 — Goal Hierarchy (Mission → Objectives → Key Results)
+
+**Feature:** Strategic goal layer above department → board → task structure. Goals cascade context into agent prompts at dispatch time so agents know the strategic purpose behind their work.
+
+**New files:**
+- `backend/app/models/goal.py` — SQLAlchemy model for goals table (3-level hierarchy: mission → objective → key_result)
+- `backend/app/schemas/goal.py` — GoalCreate, GoalUpdate, GoalOut, GoalTree, GoalContext, GoalProgressUpdate schemas
+- `backend/app/routers/goals.py` — CRUD endpoints (list, tree, get, create, update, delete), progress (manual + auto-calculate), task linking (link, unlink, list tasks)
+- `backend/app/services/goal_service.py` — get_goal_context_for_task (walk up tree), auto_calculate_progress, get_goal_tree (WITH RECURSIVE CTE), build_goal_prompt_context
+- `frontend/src/app/goals/page.tsx` — Goals management page with tree view (expand/collapse) and list view toggle, create/edit/delete dialogs
+- `frontend/src/app/goals/layout.tsx` — Layout with sidebar (same pattern as costs/schedules)
+
+**Modified files:**
+- `backend/app/models/task.py` — Added goal_id (FK goals SET NULL) column and goal relationship
+- `backend/app/schemas/task.py` — Added goal_id to TaskCreate/TaskUpdate, goal_id + goal_title to TaskOut with model_validator
+- `backend/app/services/gateway.py` — Goal context injection in dispatch_task() after skill injection, _build_task_prompt() accepts goal_context parameter
+- `backend/app/routers/tasks.py` — Added selectinload(Task.goal) to all queries, goal attribute to refresh calls
+- `backend/app/main.py` — CREATE TABLE goals migration, ALTER TABLE tasks ADD goal_id, goals router registration
+- `frontend/src/components/sidebar.tsx` — Added "Goals" nav item with Target icon in admin section
+- `frontend/src/app/boards/[id]/page.tsx` — Board goal banner, goal dropdown in task creation, Target icon on goal-linked tasks
+- `frontend/src/app/dashboard/page.tsx` — "Active Goals" section showing missions with progress and objectives
+- `frontend/src/lib/api.ts` — Goal/GoalTree types, goal_id on Task/TaskCreate, 10 goal API methods
+
+**New table:** `goals` — Hierarchical goal storage with parent_goal_id self-reference, polymorphic owner, optional board/department scoping
+
+**Goal context injection:** When a task has goal_id set, dispatch_task() walks up the goal tree and prepends "## Strategic Context" with mission/objective/key_result titles to the agent prompt.
+
+---
 
 ### March 30, 2026 — Scheduled Recurring Tasks for Agents
 

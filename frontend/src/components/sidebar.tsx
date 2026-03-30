@@ -35,6 +35,7 @@ import {
   Palette,
   DollarSign,
   CalendarClock,
+  Target,
 } from "lucide-react";
 import { api, type VersionInfo } from "@/lib/api";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -51,6 +52,7 @@ const navItems = [
 ];
 
 const adminNavItems = [
+  { href: "/goals", label: "Goals", icon: Target },
   { href: "/schedules", label: "Schedules", icon: CalendarClock },
   { href: "/costs", label: "Costs", icon: DollarSign },
   { href: "/team", label: "Team", icon: Users },

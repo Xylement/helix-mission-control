@@ -714,6 +714,50 @@ export const api = {
     request<{ task_id: number; message: string }>(`/agents/${agentId}/schedules/${scheduleId}/run-now`, { method: "POST" }),
   getAllSchedules: () =>
     request<AgentScheduleWithAgent[]>("/schedules"),
+
+  // Goals
+  getGoals: (filters?: { goal_type?: string; status?: string; board_id?: number; department_id?: number }) => {
+    const qs = new URLSearchParams();
+    if (filters?.goal_type) qs.set("goal_type", filters.goal_type);
+    if (filters?.status) qs.set("status", filters.status);
+    if (filters?.board_id) qs.set("board_id", String(filters.board_id));
+    if (filters?.department_id) qs.set("department_id", String(filters.department_id));
+    const q = qs.toString();
+    return request<Goal[]>(`/goals/${q ? `?${q}` : ""}`);
+  },
+  getGoalTree: (status?: string) =>
+    request<GoalTree[]>(`/goals/tree${status ? `?status=${status}` : ""}`),
+  getGoal: (id: number) => request<Goal>(`/goals/${id}`),
+  createGoal: (data: Record<string, unknown>) =>
+    request<Goal>("/goals/", { method: "POST", body: JSON.stringify(data) }),
+  updateGoal: (id: number, data: Record<string, unknown>) =>
+    request<Goal>(`/goals/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteGoal: (id: number) =>
+    request<void>(`/goals/${id}`, { method: "DELETE" }),
+  updateGoalProgress: (id: number, progress?: number, auto?: boolean) =>
+    request<Goal>(`/goals/${id}/progress`, {
+      method: "POST",
+      body: JSON.stringify(auto ? { auto: true } : { progress }),
+    }),
+  linkTaskToGoal: (taskId: number, goalId: number) =>
+    request<{ status: string }>(`/tasks/${taskId}/goal`, {
+      method: "POST",
+      body: JSON.stringify({ goal_id: goalId }),
+    }),
+  unlinkTaskFromGoal: (taskId: number) =>
+    request<{ status: string }>(`/tasks/${taskId}/goal`, { method: "DELETE" }),
+  getGoalTasks: (goalId: number) =>
+    request<Task[]>(`/goals/${goalId}/tasks`),
+
+  // Execution Traces
+  getTaskTraces: (taskId: number) =>
+    request<Trace[]>(`/tasks/${taskId}/traces`),
+  getTraceDetail: (traceId: string) =>
+    request<TraceDetail>(`/traces/${traceId}`),
+  getAgentTraces: (agentId: number, limit?: number) =>
+    request<Trace[]>(`/agents/${agentId}/traces${limit ? `?limit=${limit}` : ""}`),
+  getTraceStats: (days?: number) =>
+    request<TraceStats>(`/traces/stats${days ? `?days=${days}` : ""}`),
 };
 
 // Types
@@ -811,6 +855,9 @@ export interface Task {
   result: string | null;
   tags: string[] | null;
   archived: boolean;
+  goal_id: number | null;
+  goal_title: string | null;
+  traces_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -824,6 +871,32 @@ export interface TaskCreate {
   due_date?: string;
   requires_approval?: boolean;
   tags?: string[];
+  goal_id?: number;
+}
+
+export interface Goal {
+  id: number;
+  org_id: number;
+  parent_goal_id: number | null;
+  title: string;
+  description: string | null;
+  goal_type: "mission" | "objective" | "key_result";
+  status: "active" | "completed" | "paused" | "cancelled";
+  owner_type: "user" | "agent" | null;
+  owner_id: number | null;
+  target_date: string | null;
+  progress: number;
+  department_id: number | null;
+  board_id: number | null;
+  sort_order: number;
+  children_count: number;
+  tasks_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoalTree extends Goal {
+  children: GoalTree[];
 }
 
 export interface Comment {
@@ -1738,4 +1811,49 @@ export interface AgentScheduleCreate {
 export interface AgentScheduleWithAgent extends AgentSchedule {
   agent_name: string;
   agent_status: string;
+}
+
+// Execution Trace types
+export interface Trace {
+  id: string;
+  task_id: number;
+  agent_id: number;
+  trace_status: string;
+  total_steps: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_estimated_cost_usd: number;
+  model_provider: string | null;
+  model_name: string | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface TraceStep {
+  id: string;
+  step_number: number;
+  step_type: string;
+  content: string | null;
+  tool_name: string | null;
+  tool_input: Record<string, unknown> | null;
+  tool_output: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface TraceDetail extends Trace {
+  steps: TraceStep[];
+}
+
+export interface TraceStats {
+  total_traces: number;
+  avg_steps: number;
+  avg_cost_usd: number;
+  avg_duration_ms: number;
 }

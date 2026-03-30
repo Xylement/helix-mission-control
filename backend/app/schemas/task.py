@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.schemas.agent import AgentOut
 from app.schemas.auth import UserOut
@@ -14,6 +14,7 @@ class TaskCreate(BaseModel):
     due_date: datetime | None = None
     requires_approval: bool = False
     tags: list[str] | None = None
+    goal_id: int | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -27,6 +28,7 @@ class TaskUpdate(BaseModel):
     result: str | None = None
     archived: bool | None = None
     tags: list[str] | None = None
+    goal_id: int | None = None
 
 
 class TaskOut(BaseModel):
@@ -44,9 +46,28 @@ class TaskOut(BaseModel):
     requires_approval: bool
     result: str | None = None
     tags: list[str] | None = None
+    goal_id: int | None = None
+    goal_title: str | None = None
     archived: bool = False
+    traces_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def extract_goal_title(cls, data, handler):
+        # If data is a SQLAlchemy model, extract goal_title from relationship
+        goal_title = None
+        if hasattr(data, "goal") and data.goal is not None:
+            goal_title = data.goal.title
+        # Extract traces_count if set as attribute
+        traces_count = getattr(data, "_traces_count", 0) if hasattr(data, "_traces_count") else 0
+        result = handler(data)
+        if goal_title and not result.goal_title:
+            result.goal_title = goal_title
+        if traces_count:
+            result.traces_count = traces_count
+        return result
 
     class Config:
         from_attributes = True

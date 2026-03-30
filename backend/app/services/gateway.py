@@ -541,6 +541,9 @@ class OpenClawGateway:
             if text and len(text) > len(chat.get("text", "")):
                 chat["text"] = text
 
+            # Buffer trace steps from content blocks
+            self._buffer_trace_steps(chat, content)
+
         elif state == "final":
             message = payload.get("message", {})
             content = message.get("content", [])
@@ -548,15 +551,22 @@ class OpenClawGateway:
             if text:
                 chat["text"] = text
 
+            # Buffer final trace steps
+            self._buffer_trace_steps(chat, content)
+
             task_id = chat["task_id"]
             result_text = chat.get("text", "")
             chat_type = chat.get("chat_type", "task")
             agent_id = chat.get("agent_id")
+
+            # Flush trace steps and complete trace (non-blocking)
+            usage = message.get("usage") or payload.get("usage") or {}
+            await self._flush_trace(chat, "completed", usage=usage)
+
             self._active_chats.pop(session_key, None)
             await self._remove_active_chat(session_key)
 
             # Log token usage from the final message
-            usage = message.get("usage") or payload.get("usage") or {}
             await self._log_token_usage(
                 task_id=task_id,
                 agent_name=chat.get("agent_name"),
@@ -576,6 +586,11 @@ class OpenClawGateway:
             result_text = chat.get("text", "") or f"Task {state}"
             chat_type = chat.get("chat_type", "task")
             agent_id = chat.get("agent_id")
+
+            # Flush trace and mark as failed/cancelled
+            trace_status = "failed" if state == "error" else "cancelled"
+            await self._flush_trace(chat, trace_status, error_message=f"Task {state}")
+
             self._active_chats.pop(session_key, None)
             await self._remove_active_chat(session_key)
 
@@ -587,6 +602,125 @@ class OpenClawGateway:
                     logger.warning("Mention chat %s for task %d — no response to post", state, task_id)
             else:
                 await self._process_task_result(task_id, result_text, "error")
+
+    @staticmethod
+    def _buffer_trace_steps(chat: dict, content) -> None:
+        """Extract trace steps from message content blocks and buffer them."""
+        if not chat.get("trace_id") or not isinstance(content, list):
+            return
+        buffer = chat.get("trace_steps_buffer", [])
+        counter = chat.get("trace_step_counter", 0)
+        seen_count = len(buffer)
+
+        for i, block in enumerate(content):
+            if not isinstance(block, dict):
+                continue
+            # Only process blocks we haven't seen yet
+            if i < seen_count:
+                continue
+
+            block_type = block.get("type", "")
+            step = None
+
+            if block_type == "thinking":
+                step = {
+                    "step_type": "reasoning",
+                    "content": block.get("thinking", ""),
+                }
+            elif block_type == "text":
+                step = {
+                    "step_type": "reasoning",
+                    "content": block.get("text", ""),
+                }
+            elif block_type == "tool_use":
+                step = {
+                    "step_type": "tool_call",
+                    "content": f"Tool call: {block.get('name', 'unknown')}",
+                    "tool_name": block.get("name"),
+                    "tool_input": block.get("input"),
+                }
+            elif block_type == "tool_result":
+                result_content = block.get("content", "")
+                if isinstance(result_content, list):
+                    result_content = "\n".join(
+                        b.get("text", "") for b in result_content if isinstance(b, dict)
+                    )
+                step = {
+                    "step_type": "tool_result",
+                    "content": str(result_content)[:5000],
+                    "tool_name": block.get("tool_use_id", None),
+                    "tool_output": str(result_content)[:5000],
+                }
+
+            if step:
+                counter += 1
+                step["step_number"] = counter
+                buffer.append(step)
+
+        chat["trace_step_counter"] = counter
+        chat["trace_steps_buffer"] = buffer
+
+    async def _flush_trace(self, chat: dict, status: str,
+                           error_message: str | None = None,
+                           usage: dict | None = None) -> None:
+        """Flush buffered trace steps to DB and complete the trace. Non-blocking."""
+        trace_id = chat.get("trace_id")
+        if not trace_id:
+            return
+        try:
+            from app.services.trace_service import add_trace_step, complete_trace
+            buffer = chat.get("trace_steps_buffer", [])
+
+            # If no steps were captured, add a single summary step
+            if not buffer and chat.get("text"):
+                buffer = [{
+                    "step_number": 1,
+                    "step_type": "reasoning",
+                    "content": chat["text"][:5000],
+                }]
+
+            # Assign token usage to last step if available
+            input_tokens = (usage or {}).get("input_tokens", 0)
+            output_tokens = (usage or {}).get("output_tokens", 0)
+            cost = 0.0
+            if input_tokens or output_tokens:
+                try:
+                    from app.services.budget_service import estimate_cost
+                    cost = estimate_cost(
+                        input_tokens, output_tokens,
+                        chat.get("model_provider", "unknown"),
+                    )
+                except Exception:
+                    pass
+
+            async with async_session() as db:
+                for step_data in buffer:
+                    step_tokens_in = 0
+                    step_tokens_out = 0
+                    step_cost = 0.0
+                    # Assign all tokens to the last step
+                    if step_data is buffer[-1]:
+                        step_tokens_in = input_tokens
+                        step_tokens_out = output_tokens
+                        step_cost = cost
+                    await add_trace_step(
+                        db, trace_id,
+                        step_number=step_data["step_number"],
+                        step_type=step_data["step_type"],
+                        content=step_data.get("content"),
+                        tool_name=step_data.get("tool_name"),
+                        tool_input=step_data.get("tool_input"),
+                        tool_output=step_data.get("tool_output"),
+                        input_tokens=step_tokens_in,
+                        output_tokens=step_tokens_out,
+                        cost=step_cost,
+                    )
+                await complete_trace(db, trace_id, status=status, error_message=error_message)
+                await db.commit()
+            logger.info("Flushed %d trace steps for trace %s (status=%s)",
+                        len(buffer), trace_id, status)
+        except Exception as e:
+            logger.warning("Failed to flush trace %s: %s", trace_id, e)
 
     @staticmethod
     def _extract_text(content) -> str:
@@ -698,6 +832,7 @@ class OpenClawGateway:
         # Resolve model and active skills for this agent
         model_info = {"provider": "unknown", "model": "unknown"}
         skill_context = ""
+        goal_context_str = ""
         if agent.org_id:
             try:
                 async with async_session() as db:
@@ -718,11 +853,39 @@ class OpenClawGateway:
                             "Injected %d skill(s) into task %d prompt for agent %s",
                             len(active_skills), task.id, agent.name,
                         )
+
+                    # Resolve goal context for this task
+                    from app.services.goal_service import get_goal_context_for_task, build_goal_prompt_context
+                    goal_context = await get_goal_context_for_task(db, task)
+                    if goal_context and (goal_context.mission or goal_context.objective or goal_context.key_result):
+                        goal_context_str = build_goal_prompt_context(goal_context)
+                        logger.info(
+                            "Injected goal context into task %d prompt for agent %s",
+                            task.id, agent.name,
+                        )
+                    else:
+                        goal_context_str = ""
             except Exception:
                 pass
 
         # Format the task as a chat message
-        prompt = self._build_task_prompt(task, skill_context=skill_context)
+        prompt = self._build_task_prompt(task, skill_context=skill_context, goal_context=goal_context_str)
+
+        # Create execution trace (non-blocking)
+        trace_id = None
+        if agent.org_id:
+            try:
+                from app.services.trace_service import create_trace
+                async with async_session() as trace_db:
+                    trace_id = await create_trace(
+                        trace_db, agent.org_id, task.id, agent.id,
+                        model_provider=model_info["provider"],
+                        model_name=model_info["model"],
+                    )
+                    await trace_db.commit()
+                logger.info("Created trace %s for task %d", trace_id, task.id)
+            except Exception as e:
+                logger.warning("Failed to create trace for task %d: %s", task.id, e)
 
         # Track this chat (include model info for token usage logging)
         import time as _time
@@ -734,6 +897,9 @@ class OpenClawGateway:
             "model_provider": model_info["provider"],
             "model_name": model_info["model"],
             "started_at": _time.time(),
+            "trace_id": trace_id,
+            "trace_step_counter": 0,
+            "trace_steps_buffer": [],
         }
         self._active_chats[session_key] = chat_data
         await self._save_active_chat(session_key, chat_data)
@@ -760,13 +926,17 @@ class OpenClawGateway:
             raise ConnectionError(f"Failed to dispatch: {e}")
 
     @staticmethod
-    def _build_task_prompt(task: Task, *, skill_context: str = "") -> str:
-        """Build a chat prompt from a task, injecting skills and analytics data."""
+    def _build_task_prompt(task: Task, *, skill_context: str = "", goal_context: str = "") -> str:
+        """Build a chat prompt from a task, injecting skills, goals, and analytics data."""
         parts = []
 
         # Inject active skills before the task (agent reads these as domain context)
         if skill_context:
             parts.append(skill_context)
+
+        # Inject strategic goal context
+        if goal_context:
+            parts.append(goal_context)
 
         parts.append(f"## Task: {task.title}")
         if task.description:

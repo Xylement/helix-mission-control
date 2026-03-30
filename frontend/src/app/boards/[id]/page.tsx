@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import { api, type Board, type Task, type Agent, type Comment as CommentType } from "@/lib/api";
+import { api, type Board, type Task, type Agent, type Comment as CommentType, type Goal } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useWS } from "@/contexts/WebSocketContext";
 import {
@@ -46,7 +46,7 @@ import { TaskAttachments } from "@/components/TaskAttachments";
 import { MentionAutocomplete } from "@/components/mention-autocomplete";
 import {
   Plus, MessageSquare, Play, Loader2, Zap, Bot, Tag, Columns3,
-  Calendar, Clock, User, ChevronDown, ChevronUp, Pencil, Trash2, Check, Archive, X,
+  Calendar, Clock, User, ChevronDown, ChevronUp, Pencil, Trash2, Check, Archive, X, Target, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -173,7 +173,10 @@ function DraggableTaskCard({
           )}
         </div>
 
-        <h4 className="text-sm font-medium line-clamp-2 mb-1">{task.title}</h4>
+        <h4 className="text-sm font-medium line-clamp-2 mb-1">
+          {task.goal_id && <Target className="h-3 w-3 text-primary inline mr-1" />}
+          {task.title}
+        </h4>
 
         {task.description && (
           <p className="text-xs text-muted-foreground line-clamp-2 mb-1
@@ -363,6 +366,7 @@ export default function BoardPage() {
   const [editDueDate, setEditDueDate] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editTagInput, setEditTagInput] = useState("");
+  const [editGoalId, setEditGoalId] = useState<string>("");
   const [editSaving, setEditSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -375,6 +379,8 @@ export default function BoardPage() {
   const [newDueDate, setNewDueDate] = useState("");
   const [newTags, setNewTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
+  const [newGoalId, setNewGoalId] = useState<string>("");
+  const [boardGoals, setBoardGoals] = useState<Goal[]>([]);
 
   // DnD sensors
   const sensors = useSensors(
@@ -406,6 +412,10 @@ export default function BoardPage() {
         setAccessDenied(true);
         return;
       }
+      // Load goals for this board (for banner and task creation dropdown)
+      api.getGoals({ board_id: boardId, status: "active" })
+        .then(setBoardGoals)
+        .catch(() => setBoardGoals([]));
       setBoard(foundBoard);
       setTasks(tasksRes);
       setAgents(agentsRes);
@@ -469,6 +479,7 @@ export default function BoardPage() {
         assigned_agent_id: newAgent ? Number(newAgent) : undefined,
         due_date: newDueDate || undefined,
         tags: newTags.length > 0 ? newTags : undefined,
+        goal_id: newGoalId && newGoalId !== "none" ? Number(newGoalId) : undefined,
       });
       setNewTitle("");
       setNewDesc("");
@@ -477,6 +488,7 @@ export default function BoardPage() {
       setNewDueDate("");
       setNewTags([]);
       setNewTagInput("");
+      setNewGoalId("");
       setCreateOpen(false);
       loadData();
     } catch (e) {
@@ -540,6 +552,7 @@ export default function BoardPage() {
     setEditDueDate(detailTask.due_date ? detailTask.due_date.split("T")[0] : "");
     setEditTags(detailTask.tags || []);
     setEditTagInput("");
+    setEditGoalId(detailTask.goal_id ? String(detailTask.goal_id) : "none");
     setEditOpen(true);
   };
 
@@ -554,6 +567,7 @@ export default function BoardPage() {
         assigned_agent_id: editAgent ? Number(editAgent) : null,
         due_date: editDueDate || null,
         tags: editTags,
+        goal_id: editGoalId && editGoalId !== "none" ? Number(editGoalId) : null,
       } as Partial<Task>);
       setDetailTask(updated);
       setEditOpen(false);
@@ -795,6 +809,28 @@ export default function BoardPage() {
                   className="h-8 text-sm"
                 />
               </div>
+              {/* Goal link */}
+              {boardGoals.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Goal</label>
+                  <Select value={newGoalId} onValueChange={setNewGoalId}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {boardGoals.map((g) => (
+                        <SelectItem key={g.id} value={String(g.id)}>
+                          <span className="flex items-center gap-1.5">
+                            <Target className="h-3 w-3" />
+                            {g.title}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <Button type="submit" className="w-full" disabled={creating || !newTitle.trim()}>
                 {creating ? "Creating..." : "Create"}
               </Button>
@@ -804,6 +840,18 @@ export default function BoardPage() {
         )}
         </div>
       </div>
+
+      {/* Board Goal Banner */}
+      {boardGoals.length > 0 && (
+        <div className="mb-4 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10 flex items-center gap-2 text-sm">
+          <Target className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-muted-foreground">Board objective:</span>
+          <span className="font-medium">{boardGoals[0].title}</span>
+          {boardGoals[0].progress > 0 && (
+            <span className="text-xs text-muted-foreground ml-auto">{boardGoals[0].progress}%</span>
+          )}
+        </div>
+      )}
 
       {/* Kanban Board with DnD */}
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -944,6 +992,22 @@ export default function BoardPage() {
                           </CardContent>
                         </Collapsible>
                       </Card>
+                    </div>
+                  )}
+
+                  {/* View Trace button */}
+                  {detailTask.traces_count > 0 && ["review", "approved", "done", "rejected"].includes(detailTask.status) && (
+                    <div>
+                      <a
+                        href={`/tasks/${detailTask.id}/traces`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="outline" size="sm" className="w-full gap-2">
+                          <Activity className="w-4 h-4" />
+                          View Execution Trace ({detailTask.traces_count})
+                        </Button>
+                      </a>
                     </div>
                   )}
 
@@ -1283,6 +1347,28 @@ export default function BoardPage() {
                 className="h-8 text-sm"
               />
             </div>
+            {/* Goal link */}
+            {boardGoals.length > 0 && (
+              <div>
+                <label className="text-sm font-medium mb-1 block">Goal</label>
+                <Select value={editGoalId} onValueChange={setEditGoalId}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {boardGoals.map((g) => (
+                      <SelectItem key={g.id} value={String(g.id)}>
+                        <span className="flex items-center gap-1.5">
+                          <Target className="h-3 w-3" />
+                          {g.title}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button className="w-full" onClick={handleEditSave} disabled={editSaving}>
               {editSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Save Changes

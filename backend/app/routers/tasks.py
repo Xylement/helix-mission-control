@@ -22,6 +22,7 @@ from app.services.gateway import gateway
 from app.services.notifications import create_notification
 from app.services.task_status import validate_transition, ActorType, TaskStatus
 from app.services.budget_service import BudgetExceededError
+from app.services.goal_service import recalculate_goal_progress
 from app.models.board_permission import BoardPermission
 from app.services.permissions import (
     check_board_access,
@@ -49,7 +50,7 @@ async def _verify_task_in_org(db: AsyncSession, task_id: int, org_id: int) -> Ta
         select(Task)
         .join(Board, Task.board_id == Board.id)
         .join(Department, Board.department_id == Department.id)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
+        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal))
         .where(Task.id == task_id, Department.org_id == org_id)
     )
     return result.scalar_one_or_none()
@@ -85,7 +86,7 @@ async def search_tasks(
         select(Task)
         .join(Board, Task.board_id == Board.id)
         .join(Department, Board.department_id == Department.id)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
+        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal))
         .outerjoin(Agent, Task.assigned_agent_id == Agent.id)
         .where(
             Department.org_id == org_id,
@@ -116,7 +117,7 @@ async def list_tasks(
         select(Task)
         .join(Board, Task.board_id == Board.id)
         .join(Department, Board.department_id == Department.id)
-        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by))
+        .options(selectinload(Task.assigned_agent), selectinload(Task.created_by), selectinload(Task.goal))
         .where(Department.org_id == org_id)
         .order_by(Task.created_at.desc())
     )
@@ -187,11 +188,20 @@ async def create_task(
                 )
 
     await db.commit()
-    await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
+    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
+
+    # Recalculate goal progress when task is created with a goal
+    if body.goal_id:
+        try:
+            logger.info("Task %d created with goal %d, recalculating progress", task.id, body.goal_id)
+            await recalculate_goal_progress(db, body.goal_id)
+            await db.commit()
+        except Exception as goal_err:
+            logger.error("Goal progress recalculation failed for new task %d, goal %d: %s", task.id, body.goal_id, goal_err)
 
     try:
         await _maybe_auto_dispatch(task, db, user)
-        await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
+        await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
     except Exception as dispatch_err:
         logger.warning("Auto-dispatch failed for task %d, task saved as todo: %s", task.id, dispatch_err)
 
@@ -209,6 +219,12 @@ async def get_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await check_board_access(db, user, task.board_id, "view")
+    # Attach traces_count for the frontend
+    try:
+        from app.services.trace_service import get_traces_count_for_task
+        task._traces_count = await get_traces_count_for_task(db, task_id, org_id)
+    except Exception:
+        task._traces_count = 0
     return TaskOut.model_validate(task)
 
 
@@ -269,6 +285,7 @@ async def update_task(
 
     old_status = task.status
     old_agent_id = task.assigned_agent_id
+    old_goal_id = task.goal_id
 
     for k, v in updates.items():
         setattr(task, k, v)
@@ -330,7 +347,7 @@ async def update_task(
                 )
 
     await db.commit()
-    await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
+    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
 
     # Workflow engine hook — advance workflow if this task belongs to one
     if "status" in updates:
@@ -346,9 +363,27 @@ async def update_task(
             except Exception as wf_err:
                 logger.error("Workflow hook error for task %d: %s", task.id, wf_err)
 
+    # Recalculate goal progress when task status or goal_id changes
+    goals_to_recalc = set()
+    if "status" in updates and task.goal_id:
+        goals_to_recalc.add(task.goal_id)
+    if "goal_id" in updates and updates["goal_id"] != old_goal_id:
+        if old_goal_id:
+            goals_to_recalc.add(old_goal_id)
+        if task.goal_id:
+            goals_to_recalc.add(task.goal_id)
+    for gid in goals_to_recalc:
+        try:
+            logger.info("Task %d changed, recalculating goal %d progress", task.id, gid)
+            await recalculate_goal_progress(db, gid)
+        except Exception as goal_err:
+            logger.error("Goal progress recalculation failed for task %d, goal %d: %s", task.id, gid, goal_err)
+    if goals_to_recalc:
+        await db.commit()
+
     if "assigned_agent_id" in updates and updates["assigned_agent_id"]:
         await _maybe_auto_dispatch(task, db, user)
-        await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
+        await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
 
     return TaskOut.model_validate(task)
 
@@ -396,8 +431,18 @@ async def delete_task(
             meta["department_id"] = dept.id
             meta["department_name"] = dept.name
     await log_activity(db, "user", user.id, "task.deleted", "task", task.id, meta, org_id=org_id)
+    deleted_goal_id = task.goal_id
     await db.delete(task)
     await db.commit()
+
+    # Recalculate goal progress after task deletion
+    if deleted_goal_id:
+        try:
+            logger.info("Task %d deleted, recalculating goal %d progress", task_id, deleted_goal_id)
+            await recalculate_goal_progress(db, deleted_goal_id)
+            await db.commit()
+        except Exception as goal_err:
+            logger.error("Goal progress recalculation failed after deleting task %d, goal %d: %s", task_id, deleted_goal_id, goal_err)
 
 
 @router.post("/{task_id}/execute", response_model=TaskOut)
@@ -463,7 +508,7 @@ async def execute_task(
         await db.commit()
         raise HTTPException(status_code=502, detail=f"Gateway dispatch failed: {str(e)}")
 
-    await db.refresh(task, attribute_names=["assigned_agent", "created_by"])
+    await db.refresh(task, attribute_names=["assigned_agent", "created_by", "goal"])
     return TaskOut.model_validate(task)
 
 

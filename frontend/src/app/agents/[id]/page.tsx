@@ -19,6 +19,7 @@ import {
   type AgentPluginItem,
   type AgentSchedule,
   type AgentScheduleCreate,
+  type Trace,
 } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +66,7 @@ import {
   Play,
   Power,
   Repeat,
+  Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -1123,6 +1125,103 @@ function AgentSchedulesTab({
 }
 
 // ---------------------------------------------------------------------------
+// Traces tab component
+// ---------------------------------------------------------------------------
+
+function AgentTracesTab({ agentId }: { agentId: number }) {
+  const router = useRouter();
+  const [traces, setTraces] = useState<Trace[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getAgentTraces(agentId, 10)
+      .then(setTraces)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [agentId]);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-6 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (traces.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center text-muted-foreground">
+          No execution traces yet. Traces are created when tasks are dispatched to this agent.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const statusColors: Record<string, string> = {
+    running: "bg-blue-500/10 text-blue-600",
+    completed: "bg-green-500/10 text-green-600",
+    failed: "bg-red-500/10 text-red-600",
+    cancelled: "bg-muted text-muted-foreground",
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Status</TableHead>
+                <TableHead>Task</TableHead>
+                <TableHead>Model</TableHead>
+                <TableHead>Steps</TableHead>
+                <TableHead>Cost</TableHead>
+                <TableHead>Duration</TableHead>
+                <TableHead>Started</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {traces.map((trace) => (
+                <TableRow
+                  key={trace.id}
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/tasks/${trace.task_id}/traces`)}
+                >
+                  <TableCell>
+                    <Badge className={statusColors[trace.trace_status] || ""}>
+                      {trace.trace_status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">#{trace.task_id}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {trace.model_name || "-"}
+                  </TableCell>
+                  <TableCell>{trace.total_steps}</TableCell>
+                  <TableCell className="text-xs">${trace.total_estimated_cost_usd.toFixed(4)}</TableCell>
+                  <TableCell className="text-xs">
+                    {trace.duration_ms != null
+                      ? trace.duration_ms < 1000
+                        ? `${trace.duration_ms}ms`
+                        : `${(trace.duration_ms / 1000).toFixed(1)}s`
+                      : "-"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(trace.started_at).toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -1186,7 +1285,7 @@ export default function AgentDetailPage() {
   const [savingBudget, setSavingBudget] = useState(false);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"active" | "history" | "skills" | "plugins" | "schedules">("active");
+  const [activeTab, setActiveTab] = useState<"active" | "history" | "skills" | "plugins" | "schedules" | "traces">("active");
 
   const loadData = useCallback(async () => {
     try {
@@ -1804,6 +1903,15 @@ export default function AgentDetailPage() {
             <CalendarClock className="mr-1 h-3.5 w-3.5" />
             Schedules ({agentSchedules.length})
           </Button>
+          <Button
+            variant={activeTab === "traces" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("traces")}
+            className="rounded-md"
+          >
+            <Activity className="mr-1 h-3.5 w-3.5" />
+            Traces
+          </Button>
         </div>
 
         {activeTab === "active" && (
@@ -1951,6 +2059,10 @@ export default function AgentDetailPage() {
             isAdmin={isAdmin}
             onReload={loadSchedules}
           />
+        )}
+
+        {activeTab === "traces" && (
+          <AgentTracesTab agentId={agentId} />
         )}
       </div>
 

@@ -5,12 +5,14 @@ import { api, type CostDashboard } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import {
   DollarSign,
   TrendingUp,
   TrendingDown,
   Bot,
   Loader2,
+  Activity,
 } from "lucide-react";
 
 export default function CostsPage() {
@@ -147,11 +149,21 @@ export default function CostsPage() {
                             </Badge>
                           )}
                         </div>
-                        <span className="text-muted-foreground">
-                          ${agent.spent_usd.toFixed(2)}
-                          {agent.budget_usd !== null && (
-                            <span> / ${agent.budget_usd.toFixed(2)}</span>
-                          )}
+                        <span className="flex items-center gap-2 text-muted-foreground">
+                          <span>
+                            ${agent.spent_usd.toFixed(2)}
+                            {agent.budget_usd !== null && (
+                              <span> / ${agent.budget_usd.toFixed(2)}</span>
+                            )}
+                          </span>
+                          <Link
+                            href={`/agents/${agent.agent_id}`}
+                            className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Activity className="w-3 h-3" />
+                            traces
+                          </Link>
                         </span>
                       </div>
                       {agent.budget_usd !== null && (

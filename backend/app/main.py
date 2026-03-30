@@ -12,6 +12,7 @@ from app.core.database import engine, Base, async_session
 from app.routers import auth, departments, boards, agents, tasks, comments, activity, mentions, dashboard
 from app.routers import schedules as schedules_router
 from app.routers import billing as billing_router
+from app.routers import goals as goals_router
 from app.routers import gateway as gateway_router
 from app.routers import users as users_router
 from app.routers import gateways as gateways_router
@@ -30,6 +31,7 @@ from app.routers import plugins as plugins_router
 from app.routers import backups as backups_router
 from app.routers import version as version_router
 from app.routers import white_label as white_label_router
+from app.routers import traces as traces_router
 from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
@@ -301,6 +303,95 @@ async def lifespan(app: FastAPI):
             CREATE INDEX IF NOT EXISTS idx_agent_schedules_next_run
             ON agent_schedules(next_run_at) WHERE is_active = true
         """))
+        # Create goals table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS goals (
+                id SERIAL PRIMARY KEY,
+                org_id INTEGER NOT NULL REFERENCES organizations(id),
+                parent_goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+                title VARCHAR(500) NOT NULL,
+                description TEXT,
+                goal_type VARCHAR(20) NOT NULL DEFAULT 'objective',
+                status VARCHAR(20) NOT NULL DEFAULT 'active',
+                owner_type VARCHAR(10),
+                owner_id INTEGER,
+                target_date DATE,
+                progress INTEGER DEFAULT 0,
+                department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+                board_id INTEGER REFERENCES boards(id) ON DELETE SET NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_by INTEGER REFERENCES users(id),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_goals_org ON goals(org_id)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_goals_parent ON goals(parent_goal_id)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_goals_board ON goals(board_id)"
+        ))
+        # Create execution_traces table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS execution_traces (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                org_id INTEGER NOT NULL REFERENCES organizations(id),
+                task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                trace_status VARCHAR(20) NOT NULL DEFAULT 'running',
+                total_steps INTEGER DEFAULT 0,
+                total_input_tokens INTEGER DEFAULT 0,
+                total_output_tokens INTEGER DEFAULT 0,
+                total_estimated_cost_usd DECIMAL(10, 6) DEFAULT 0,
+                model_provider VARCHAR(50),
+                model_name VARCHAR(100),
+                error_message TEXT,
+                started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                completed_at TIMESTAMP WITH TIME ZONE,
+                duration_ms INTEGER,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_execution_traces_task_id ON execution_traces(task_id)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_execution_traces_agent_id ON execution_traces(agent_id)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_execution_traces_org_id ON execution_traces(org_id)"
+        ))
+        # Create execution_trace_steps table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS execution_trace_steps (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                trace_id UUID NOT NULL REFERENCES execution_traces(id) ON DELETE CASCADE,
+                step_number INTEGER NOT NULL,
+                step_type VARCHAR(30) NOT NULL,
+                content TEXT,
+                tool_name VARCHAR(200),
+                tool_input JSONB,
+                tool_output TEXT,
+                input_tokens INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                estimated_cost_usd DECIMAL(10, 6) DEFAULT 0,
+                duration_ms INTEGER,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_trace_steps_trace_id ON execution_trace_steps(trace_id)"
+        ))
+        # Add goal_id column to tasks
+        await conn.execute(text(
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_goal ON tasks(goal_id)"
+        ))
     if os.environ.get("SEED_DATA", "").lower() == "true":
         async with async_session() as db:
             await seed_all(db)
@@ -381,6 +472,9 @@ app.include_router(backups_router.router, prefix="/api")
 app.include_router(version_router.router, prefix="/api")
 app.include_router(white_label_router.router, prefix="/api")
 app.include_router(schedules_router.router, prefix="/api")
+app.include_router(goals_router.router, prefix="/api")
+app.include_router(goals_router.task_goal_router, prefix="/api")
+app.include_router(traces_router.router, prefix="/api")
 app.include_router(websocket_router.router)
 
 

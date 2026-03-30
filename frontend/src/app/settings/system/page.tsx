@@ -99,7 +99,6 @@ export default function SystemSettingsPage() {
   const [updating, setUpdating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
-  const [updateStage, setUpdateStage] = useState<string | null>(null);
   const [updateTakingLong, setUpdateTakingLong] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
@@ -154,7 +153,6 @@ export default function SystemSettingsPage() {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-    setUpdateStage(null);
     setUpdateTakingLong(false);
   };
 
@@ -162,7 +160,6 @@ export default function SystemSettingsPage() {
     if (!password) return;
     setUpdating(true);
     setUpdateMessage("Initiating update...");
-    setUpdateStage(null);
     setUpdateTakingLong(false);
 
     try {
@@ -186,10 +183,6 @@ export default function SystemSettingsPage() {
           setVersionInfo(data);
 
           const lastStatus = data.last_update_status;
-          if (lastStatus?.stage) {
-            setUpdateStage(lastStatus.stage);
-          }
-
           if (lastStatus?.status === "success") {
             setUpdateMessage(`Update successful! Now running v${data.current_version}`);
             stopPolling();
