@@ -487,25 +487,7 @@ class OpenClawGateway:
         try:
             async for raw in self.ws:
                 try:
-                    # --- TEMPORARY TRACE DEBUG LOGGING ---
-                    logger.info("[TRACE-DEBUG] Raw gateway message: type=%s, content=%s", type(raw).__name__, str(raw)[:500])
                     data = json.loads(raw)
-                    if isinstance(data, dict):
-                        logger.info("[TRACE-DEBUG] Message keys: %s, type field: %s", list(data.keys()), data.get("type", "N/A"))
-                        # Log deeper for chat events
-                        if data.get("type") == "event" and data.get("event") == "chat":
-                            payload = data.get("payload", {})
-                            msg = payload.get("message", {})
-                            content = msg.get("content", [])
-                            logger.info("[TRACE-DEBUG] Chat event: state=%s, sessionKey=%s, content_type=%s, content_len=%s",
-                                        payload.get("state"), payload.get("sessionKey", "")[:30],
-                                        type(content).__name__, len(content) if isinstance(content, list) else len(str(content)))
-                            if isinstance(content, list):
-                                for i, block in enumerate(content[:10]):
-                                    if isinstance(block, dict):
-                                        logger.info("[TRACE-DEBUG]   content[%d]: type=%s, keys=%s, preview=%s",
-                                                    i, block.get("type", "?"), list(block.keys()), str(block)[:300])
-                    # --- END TRACE DEBUG LOGGING ---
                     await self._handle_message(data)
                 except json.JSONDecodeError:
                     logger.warning("Non-JSON message from gateway")

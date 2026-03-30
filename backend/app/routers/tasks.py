@@ -56,6 +56,19 @@ async def _verify_task_in_org(db: AsyncSession, task_id: int, org_id: int) -> Ta
     return result.scalar_one_or_none()
 
 
+async def _attach_traces_counts(db: AsyncSession, tasks: list, org_id: int) -> None:
+    """Attach _traces_count attribute to each task in the list."""
+    try:
+        from app.services.trace_service import get_traces_counts_for_tasks
+        task_ids = [t.id for t in tasks]
+        counts = await get_traces_counts_for_tasks(db, task_ids, org_id)
+        for t in tasks:
+            t._traces_count = counts.get(t.id, 0)
+    except Exception:
+        for t in tasks:
+            t._traces_count = 0
+
+
 async def _filter_tasks_by_board_permission(db: AsyncSession, user, tasks: list) -> list:
     """Filter a list of tasks to only those on boards the user can access."""
     is_admin, accessible = await get_user_accessible_board_ids(db, user)
@@ -100,6 +113,7 @@ async def search_tasks(
     result = await db.execute(stmt)
     tasks = result.scalars().all()
     tasks = await _filter_tasks_by_board_permission(db, user, tasks)
+    await _attach_traces_counts(db, tasks, org_id)
     return [TaskOut.model_validate(t) for t in tasks]
 
 
@@ -134,6 +148,7 @@ async def list_tasks(
     result = await db.execute(q)
     tasks = result.scalars().all()
     tasks = await _filter_tasks_by_board_permission(db, user, tasks)
+    await _attach_traces_counts(db, tasks, org_id)
     return [TaskOut.model_validate(t) for t in tasks]
 
 

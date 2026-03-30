@@ -157,3 +157,15 @@ async def get_traces_count_for_task(db: AsyncSession, task_id: int, org_id: int)
         .where(ExecutionTrace.task_id == task_id, ExecutionTrace.org_id == org_id)
     )
     return result.scalar() or 0
+
+
+async def get_traces_counts_for_tasks(db: AsyncSession, task_ids: list[int], org_id: int) -> dict[int, int]:
+    """Batch-fetch trace counts for multiple tasks. Returns {task_id: count}."""
+    if not task_ids:
+        return {}
+    result = await db.execute(
+        select(ExecutionTrace.task_id, func.count(ExecutionTrace.id))
+        .where(ExecutionTrace.task_id.in_(task_ids), ExecutionTrace.org_id == org_id)
+        .group_by(ExecutionTrace.task_id)
+    )
+    return dict(result.all())
