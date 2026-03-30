@@ -74,11 +74,9 @@ export default function TaskTracesPage() {
           variant="ghost"
           size="icon"
           onClick={() => {
-            if (window.history.length > 1) {
-              router.back();
-            } else {
-              router.push(task?.board_id ? `/boards/${task.board_id}` : "/");
-            }
+            // Trace page is typically opened in a new tab from the board task detail,
+            // so router.back() would go nowhere useful. Navigate to the board directly.
+            router.push(task?.board_id ? `/boards/${task.board_id}` : "/");
           }}
         >
           <ArrowLeft className="w-4 h-4" />
