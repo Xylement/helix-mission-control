@@ -30,13 +30,26 @@
 
 set -euo pipefail
 
+# === Root Guard (macOS) ===
+# On macOS, Docker Desktop runs as the current user — root breaks volume mounts.
+# On Linux, root IS required for system package installs and Docker setup.
+if [[ "$OSTYPE" == "darwin"* ]] && [ "$(id -u)" -eq 0 ]; then
+    echo ""
+    echo "[HELIX] ERROR: Don't run this script with sudo or as root."
+    echo "[HELIX] Run it as your normal user:"
+    echo ""
+    echo "  curl -fsSL https://helixnode.tech/install.sh | bash"
+    echo ""
+    exit 1
+fi
+
 # === Configuration ===
 HELIX_VERSION="1.1.0"
 HELIX_REPO="https://github.com/Xylement/helix-mission-control.git"
 HELIX_BRANCH="main"
 INSTALL_DIR="/home/helix/helix-mission-control"
 HELIX_USER="helix"
-LOG_FILE="/var/log/helix-install.log"
+LOG_FILE="$HOME/.helix/install.log"
 DOMAIN=""
 SSL_EMAIL=""
 ENABLE_SSL="false"
@@ -741,6 +754,9 @@ install_macos() {
     # Create OpenClaw directories
     setup_openclaw_dirs
 
+    # Ensure .openclaw exists before Docker mounts it
+    mkdir -p "$HOME/.openclaw"
+
     # Build and start
     log "Building and starting HELIX Mission Control..."
     docker compose up -d --build
@@ -823,7 +839,7 @@ main() {
         # Linux flow (Ubuntu + Debian)
 
         # Initialize log file
-        mkdir -p "$(dirname "$LOG_FILE")"
+        mkdir -p "$HOME/.helix"
         touch "$LOG_FILE"
 
         preflight_linux

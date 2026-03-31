@@ -1,7 +1,7 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
 ## Last updated: March 29, 2026 (v1.2.0 release)
-## Last updated: March 30, 2026 (goal hierarchy with strategic context injection)
+## Last updated: March 31, 2026 (Next.js API proxy rewrites for fresh installs)
 
 ---
 
@@ -290,6 +290,17 @@ After every Claude Code session that creates/modifies files:
 ---
 
 ## 11. Recent Changes
+
+### March 31, 2026 — Next.js API proxy rewrites for fresh installs without reverse proxy
+
+**Problem:** On fresh installs (e.g., macOS Docker Desktop) without Nginx/Caddy, the frontend at port 3000 can't reach the backend at port 8000. Requests to `/api/...` hit Next.js and return 404.
+
+**Fix:**
+- `frontend/next.config.mjs` — Added `rewrites()` to proxy `/api/:path*` to backend via `BACKEND_URL` env var (defaults to `http://backend:8000`). In production with Nginx, the rewrites never trigger because Nginx intercepts `/api/*` first.
+- `docker-compose.yml` — Added `BACKEND_URL=http://backend:8000` to frontend service environment.
+- `install.sh` — Added macOS root guard, changed log path from `/var/log/helix-install.log` to `$HOME/.helix/install.log`, added `mkdir -p ~/.openclaw` before `docker compose up`.
+
+Applied to both production (`~/helix-mission-control/`) and staging (`~/helix-staging/`).
 
 ### March 29, 2026 — Landing page: remove waitlist, add launch CTAs and install command
 
