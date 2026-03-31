@@ -10,7 +10,7 @@ Add a strategic goal layer to HELIX Mission Control. Currently tasks exist in a 
 - Codebase: `~/helix-staging/` (staging branch)
 - Current structure: organizations → departments → boards → tasks (location-based, no purpose layer)
 - Agent prompt injection: `resolve_active_skills()` in gateway.py already injects skills into prompts at dispatch time. Goals will follow the same pattern.
-- GALADO example: Marketing department has 7 boards, 8 agents. Currently agents see "Write a social media post about phone cases" but don't know "we're trying to grow Instagram to 10K followers by Q3" or "our company mission is to become the #1 phone accessories brand in SE Asia."
+- Example: Marketing department has 7 boards, 8 agents. Currently agents see "Write a social media post about widgets" but don't know "we're trying to grow Instagram to 10K followers by Q3" or "our company mission is to become the #1 premium widgets brand."
 
 ---
 

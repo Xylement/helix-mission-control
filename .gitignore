@@ -18,3 +18,9 @@ data/.update-trigger
 data/.update-result
 data/.update-history
 data/.pre-update-commit
+
+# Credentials and environment configs
+backend/credentials/
+.env.*
+backend/.env.*
+nginx/

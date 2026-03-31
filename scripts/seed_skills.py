@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed 10 GALADO starter skills via the API."""
+"""Seed 10 starter skills via the API."""
 import json
 import sys
 import urllib.request
@@ -9,7 +9,7 @@ API = "http://localhost:8000/api"
 # Login
 req = urllib.request.Request(
     f"{API}/auth/login",
-    data=json.dumps({"email": "clement@galado.com.my", "password": "helix2024!"}).encode(),
+    data=json.dumps({"email": "clement@demo.example.com", "password": "helix2024!"}).encode(),
     headers={"Content-Type": "application/json"},
 )
 resp = json.loads(urllib.request.urlopen(req).read())
@@ -57,68 +57,68 @@ def assign_skill(agent_ids, skill_id):
 
 
 # =========================================================================
-# SKILL 1: Shopee Product Listing
+# SKILL 1: E-Commerce Product Listing
 # =========================================================================
 print("Creating skills...")
 
 s1 = create_skill({
-    "name": "Shopee Product Listing",
-    "slug": "shopee-product-listing",
-    "description": "How to write high-converting Shopee product descriptions for GALADO phone cases.",
+    "name": "E-Commerce Product Listing",
+    "slug": "ecommerce-product-listing",
+    "description": "How to write high-converting e-commerce product descriptions for premium widgets.",
     "category": "copywriting",
-    "tags": ["shopee", "ecommerce", "product-description", "malaysia"],
+    "tags": ["ecommerce", "product-description", "marketplace"],
     "activation_mode": "always",
-    "content": """# Shopee Product Listing
+    "content": """# E-Commerce Product Listing
 
 ## Tone & Voice
-Write in a friendly, enthusiastic tone. Mix English and casual Malay where it feels natural (e.g., "cantik gila", "confirm nice", "memang worth it"). Target audience is Malaysian women aged 18-35 who shop on mobile. Keep it conversational — like texting a friend who has great taste in phone accessories.
+Write in a friendly, enthusiastic tone. Target audience is online shoppers aged 18-45 who value quality and design. Keep it conversational — like recommending a product to a friend.
 
 Avoid overly formal language. Don't sound like a corporate press release. Sound like someone who genuinely loves the product and wants to share it.
 
 ## Structure
-Every Shopee listing must follow this structure:
+Every product listing must follow this structure:
 
 1. **Hook headline** (max 120 characters) — Benefit-first, include the product name. Make the buyer stop scrolling.
-2. **Key features** (3-5 bullet points) — Focus on what makes this design unique. Mention the aesthetic, the feel, the vibe.
-3. **Material & specs** — TPU/polycarbonate, compatible phone models (list all), approximate weight. Be specific.
-4. **Care instructions** — One line: "Wipe clean with soft cloth. Avoid prolonged sun exposure."
-5. **Shipping info** — "Ships from Penang, 1-3 business days to West Malaysia, 3-7 days to East Malaysia."
+2. **Key features** (3-5 bullet points) — Focus on what makes this product unique. Mention the design, quality, and value.
+3. **Material & specs** — Materials, dimensions, compatible models/sizes. Be specific.
+4. **Care instructions** — One line on maintenance or care.
+5. **Shipping info** — Estimated delivery times by region.
 
 ## Rules
-- Always include "GALADO" brand name in the first line of the description
-- Use emojis sparingly — maximum 3 per listing. Prefer subtle ones: ✨ 💖 📱
-- Include at least 2 keywords from: phone case, casing, cover, protection, design, aesthetic
-- Price is NEVER mentioned in the description (Shopee shows it separately)
-- Never make claims about "unbreakable" or "100% protection" — use "durable" or "shock-resistant"
-- Always mention "customizable" if the case supports custom text or initials
+- Always include the brand name in the first line of the description
+- Use emojis sparingly — maximum 3 per listing. Prefer subtle ones: ✨ 💫 📦
+- Include at least 2 relevant keywords for marketplace search optimization
+- Price is NEVER mentioned in the description (the platform shows it separately)
+- Never make exaggerated claims like "unbreakable" or "100% guaranteed" — use "durable" or "high-quality"
+- Always mention customization options if available
 - Keep the overall description between 150-300 words
-- The brand aesthetic is black & white with a single pop accent color — reflect this clean, premium feel
+- Reflect the brand's clean, premium aesthetic in your writing tone
 
 ## Examples
 
 ### Good
-✨ GALADO Hearts in the Clouds Phone Case — Dreamy Protection for Your Phone
+✨ Acme Co Premium Widget Pro — Elevate Your Everyday Setup
 
-Make your phone as aesthetic as your feed! This kawaii cloud design features soft pastel hearts on a clean white background with subtle black line art. Premium TPU material feels smooth in your hand and protects against everyday drops.
+Upgrade your workflow with a widget that's as functional as it is beautiful. This sleek design features a minimalist aesthetic with premium materials that feel great in your hand and look amazing on your desk.
 
 **Why you'll love it:**
-- Dreamy cloud + heart design that's Instagram-worthy
-- Slim profile — fits in your pocket, no bulk
-- Raised edges protect your camera and screen
-- Available for iPhone 14-16 series & Samsung S23-S25
+- Minimalist design that complements any workspace
+- Slim profile — compact and portable
+- Premium build quality with reinforced edges
+- Available in multiple sizes and color options
 
-Material: Premium flexible TPU, 28g
-Ships from Penang 📱
+Material: Aircraft-grade aluminum, 45g
+Ships within 1-3 business days 📦
 
 ### Bad
-PHONE CASE FOR SALE!!! BEST QUALITY!!! BUY NOW!!! CHEAPEST IN MALAYSIA!!! 100% ORIGINAL!!! FREE GIFT!!!
+WIDGET FOR SALE!!! BEST QUALITY!!! BUY NOW!!! CHEAPEST ANYWHERE!!! 100% ORIGINAL!!! FREE GIFT!!!
 
 ## Do
 - Research competitor listings before writing
-- Include the case design name in the title
-- Mention if it's part of a collection (e.g., "Part of our Dreamy Collection")
-- Use the same tone as GALADO's Instagram — premium but approachable
-- Highlight tactile qualities ("smooth matte finish", "soft-touch grip")
+- Include the product variant name in the title
+- Mention if it's part of a collection
+- Maintain a premium but approachable tone
+- Highlight tactile qualities ("smooth matte finish", "precision-machined edges")
 
 ## Don't
 - Copy competitor descriptions — ever
@@ -126,30 +126,30 @@ PHONE CASE FOR SALE!!! BEST QUALITY!!! BUY NOW!!! CHEAPEST IN MALAYSIA!!! 100% O
 - Promise overnight delivery
 - Include pricing or discount info in the description
 - Use more than 3 exclamation marks in the entire listing
-- Reference other platforms ("check our Instagram") — Shopee penalizes this
+- Reference other platforms in marketplace-specific listings
 """
 })
 
 # =========================================================================
-# SKILL 2: GALADO Brand Guidelines
+# SKILL 2: Brand Guidelines
 # =========================================================================
 
 s2 = create_skill({
-    "name": "GALADO Brand Guidelines",
-    "slug": "galado-brand-guidelines",
-    "description": "Complete brand identity guide for GALADO — colors, voice, audience, and visual standards.",
+    "name": "Brand Guidelines",
+    "slug": "brand-guidelines",
+    "description": "Complete brand identity guide — colors, voice, audience, and visual standards.",
     "category": "branding",
     "tags": ["brand", "design", "guidelines"],
     "activation_mode": "always",
-    "content": """# GALADO Brand Guidelines
+    "content": """# Brand Guidelines
 
 ## Brand Overview
-GALADO is a Malaysian phone accessories brand based in Penang, specializing in customizable phone cases and phone charms. We sell on Shopee, Instagram, TikTok, and direct via WooCommerce. Our target customer is Malaysian women aged 18-35 who value aesthetic, stylish phone accessories that express their personality.
+Acme Co is a direct-to-consumer brand specializing in premium widgets and accessories. We sell on major marketplaces, social media, and our own website. Our target customer values quality, aesthetics, and self-expression through the products they choose.
 
 ## Brand Colors
 
 ### Primary Palette: Black & White
-Black and white form the core of GALADO's visual identity. This creates a clean, minimal, premium foundation that lets product designs and accent colors shine. All brand materials, packaging, and templates should default to black and white.
+Black and white form the core of the visual identity. This creates a clean, minimal, premium foundation that lets product designs and accent colors shine. All brand materials, packaging, and templates should default to black and white.
 
 - **Black**: #000000 — Primary text, logos, packaging base
 - **White**: #FFFFFF — Backgrounds, negative space, clean contrast
@@ -157,45 +157,45 @@ Black and white form the core of GALADO's visual identity. This creates a clean,
 ### Accent Colors
 Accent colors are used **one at a time** as a solo pop alongside the black & white base. Never use multiple accent colors simultaneously. The accent color changes by campaign, collection, or season.
 
-Common accent colors used:
+Common accent colors:
 - Campaign Blue: #3B82F6
 - Bold Red: #EF4444
 - Fresh Green: #22C55E
-- GALADO Pink: #EC4899
+- Brand Pink: #EC4899
 
-**Rule**: When using an accent color, it should appear in no more than 20-30% of the visual. The rest stays black & white. This creates the signature GALADO look — clean minimalism with one bold pop.
+**Rule**: When using an accent color, it should appear in no more than 20-30% of the visual. The rest stays black & white. This creates the signature look — clean minimalism with one bold pop.
 
 ## Brand Voice & Personality
-- **Premium but accessible** — We're not luxury, but we're not cheap. Think Zara, not Hermès.
+- **Premium but accessible** — We're not luxury, but we're not cheap. Think Zara, not Hermes.
 - **Playful but not childish** — Fun, witty, relatable. Never cringey or try-hard.
 - **Confident** — We know our products are good. We don't need to shout or over-sell.
-- **Inclusive** — All women, all aesthetics, all styles. No gatekeeping.
-- **Local pride** — We're proudly Malaysian. Casual Malay mixed with English is welcome and encouraged.
+- **Inclusive** — All styles, all aesthetics. No gatekeeping.
+- **Authentic** — Genuine enthusiasm, not manufactured hype.
 
 ### Tone by Channel
-- **Shopee**: Friendly, informative, emoji-light, keyword-rich
+- **Marketplace**: Friendly, informative, emoji-light, keyword-rich
 - **Instagram**: Aesthetic, aspirational, caption-savvy, hashtag-strategic
 - **TikTok**: Casual, trendy, hook-driven, sound-aware
 - **Email**: Warm, personal, value-driven, clean layout
 - **Customer Service**: Empathetic, solution-focused, professional but not cold
 
 ## Target Audience
-- **Demographics**: Women, 18-35, Malaysia (primary: KL, Penang, JB)
-- **Psychographics**: Values aesthetics and self-expression, active on social media, shops online weekly, follows lifestyle and fashion content
-- **Shopping behavior**: Compares products on Shopee before buying, influenced by Instagram and TikTok content, responds well to limited editions and collections
+- **Demographics**: Adults 18-45, style-conscious online shoppers
+- **Psychographics**: Values aesthetics and self-expression, active on social media, shops online regularly, follows design and lifestyle content
+- **Shopping behavior**: Compares products before buying, influenced by social media content, responds well to limited editions and collections
 
 ## Product Categories
-1. **Phone Cases** — TPU, polycarbonate, and hybrid materials. Available for iPhone and Samsung flagship models. Designs range from minimalist to kawaii to abstract art.
-2. **Phone Charms** — Beaded, acrylic, and mixed-material charms that attach to phone cases. Sold individually and as sets.
+1. **Premium Widgets** — Various materials and finishes. Range from minimalist to bold designs.
+2. **Accessories** — Complementary add-ons sold individually and as sets.
 
 ## Brand Story
-GALADO was founded in Penang with one goal: make phone cases that are as expressive as the people who carry them. Every design is created to help our customers show who they are — whether that's bold and vibrant or soft and minimal. We believe your phone case is the most-seen accessory you own, so it should reflect you.
+Acme Co was founded with one goal: create everyday products that are as expressive as the people who use them. Every design is created to help our customers show who they are — whether that's bold and vibrant or soft and minimal.
 
 ## Visual Standards
-- Photography: Clean backgrounds (white or black), natural lighting, lifestyle shots showing the case in everyday settings
-- Product shots: Always show the case on a phone, never floating alone
+- Photography: Clean backgrounds (white or black), natural lighting, lifestyle shots showing products in context
+- Product shots: Always show the product in use, not floating alone
 - Social media: Consistent grid aesthetic, alternating between product and lifestyle shots
-- Packaging: Black box with white GALADO logo, single accent color sticker per collection
+- Packaging: Black box with white logo, single accent color sticker per collection
 """
 })
 
@@ -206,7 +206,7 @@ GALADO was founded in Penang with one goal: make phone cases that are as express
 s3 = create_skill({
     "name": "Instagram Caption Style",
     "slug": "instagram-caption-style",
-    "description": "Brand voice, caption structure, and hashtag strategy for GALADO's Instagram content.",
+    "description": "Brand voice, caption structure, and hashtag strategy for Instagram content.",
     "category": "social-media",
     "tags": ["instagram", "social", "captions"],
     "activation_mode": "board",
@@ -214,37 +214,37 @@ s3 = create_skill({
     "content": """# Instagram Caption Style
 
 ## Caption Structure
-Every GALADO Instagram caption follows this flow:
+Every Instagram caption follows this flow:
 
 1. **Hook** (first line, before "...more") — This is the only line most people see. Make it count. Ask a question, make a bold statement, or create curiosity.
 2. **Value/Story** (2-4 sentences) — Give context. Tell a mini-story about the product, the design inspiration, or the vibe. Connect emotionally.
-3. **CTA** (call to action) — Tell them what to do next. "Tap the link in bio", "Save this for later", "Tag your bestie who needs this", "Comment your fave color".
+3. **CTA** (call to action) — Tell them what to do next. "Tap the link in bio", "Save this for later", "Tag your friend who needs this", "Comment your fave color".
 
-### Hook Formulas That Work for GALADO
-- "POV: You just found your new daily case ✨"
+### Hook Formulas That Work
+- "POV: You just found your new favorite everyday carry ✨"
 - "This design was inspired by [something relatable]..."
-- "Your phone called. It wants a glow-up."
-- "Hot take: [opinion about phone cases]"
-- "If your case doesn't match your aesthetic, do you even have an aesthetic?"
+- "Your setup called. It wants a glow-up."
+- "Hot take: [opinion about product category]"
+- "If your gear doesn't match your aesthetic, do you even have an aesthetic?"
 
 ## Hashtag Strategy
 Use 15-20 hashtags per post. Mix three categories:
 
 ### Branded (use on every post)
-#GALADO #GALADOcase #GALADOmy #GALADOphonecase
+#AcmeCo #AcmeCoDesign #AcmeCoStyle
 
 ### Niche (rotate based on content)
-#phonecasemalaysia #casingphone #phoneaccessories #iphonecase #samsungcase #aestheticphonecase #customphonecase #penangbrand #malaysianbrand
+#premiumwidgets #designeraccessories #minimalistdesign #aestheticsetup #desksetup #everydaycarry
 
 ### Broad / Trending (pick 3-5 per post)
-#aesthetic #aestheticvibes #phonephotography #flatlay #ootdmalaysia #instadaily #supportlocal #shoplocal #madeinmalaysia
+#aesthetic #aestheticvibes #flatlay #instadaily #supportsmallbusiness #shopsmall #designinspiration
 
 **Placement**: Put hashtags in the first comment (not in the caption itself) to keep the caption clean. Some posts can use 2-3 hashtags inline in the caption if they flow naturally.
 
 ## Emoji Usage
 - Use 1-3 emojis per caption — never more
 - Place them at natural breaks, not clustered together
-- Preferred emojis: ✨ 🖤 🤍 📱 💫 🫶 (matches the black & white + accent aesthetic)
+- Preferred emojis: ✨ 🖤 🤍 📦 💫 🫶 (matches the black & white + accent aesthetic)
 - Never use: 🔥💯🙏😂 (overused, doesn't fit brand tone)
 
 ## Caption Length
@@ -254,7 +254,7 @@ Use 15-20 hashtags per post. Mix three categories:
 - **Collab/feature posts**: 80-120 words. Credit the collaborator, tell the story.
 
 ## Engagement Prompts (rotate these)
-- "Save this post if you'd rock this case 🫶"
+- "Save this post if you'd use this daily 🫶"
 - "Tag someone who NEEDS to see this"
 - "Comment ✨ and we'll DM you the link"
 - "Which design are you? A or B?"
@@ -265,27 +265,27 @@ Use 15-20 hashtags per post. Mix three categories:
 - Never use multiple accent colors in one visual — stick to one pop color per post
 - Maintain the black & white foundation in all grid posts
 - Every caption should feel like it came from the same person — consistent voice, same energy
-- When featuring a product, always mention the design name and which phones it fits
+- When featuring a product, always mention the design name and available variants
 """
 })
 
 # =========================================================================
-# SKILL 4: Klaviyo Email Templates
+# SKILL 4: Email Marketing Templates
 # =========================================================================
 
 s4 = create_skill({
-    "name": "Klaviyo Email Templates",
-    "slug": "klaviyo-email-templates",
-    "description": "Email marketing templates, subject line formulas, and automation flows for GALADO's Klaviyo setup.",
+    "name": "Email Marketing Templates",
+    "slug": "email-marketing-templates",
+    "description": "Email marketing templates, subject line formulas, and automation flows.",
     "category": "email",
-    "tags": ["klaviyo", "email", "marketing"],
+    "tags": ["email", "marketing", "automation"],
     "activation_mode": "always",
-    "content": """# Klaviyo Email Templates
+    "content": """# Email Marketing Templates
 
 ## Email Types & Flows
 
 ### 1. Welcome Series (3 emails over 5 days)
-- **Email 1** (immediate): Welcome + brand story + 10% first order code. Subject: "Welcome to the GALADO fam ✨"
+- **Email 1** (immediate): Welcome + brand story + 10% first order code. Subject: "Welcome to the crew ✨"
 - **Email 2** (day 2): Best-sellers showcase + social proof. Subject: "These are our customers' favorites"
 - **Email 3** (day 5): "Still thinking?" + reminder of 10% code expiring. Subject: "Your 10% off expires soon — here's what we'd pick"
 
@@ -294,18 +294,18 @@ s4 = create_skill({
 - **Email 2** (24 hours after): Urgency + "Only X left in stock" (if applicable). Include customer reviews.
 
 ### 3. Post-Purchase (2 emails)
-- **Email 1** (day 1): Order confirmation + "Here's how to care for your case" tips
-- **Email 2** (day 7): "How's your new case?" + review request + share on social CTA
+- **Email 1** (day 1): Order confirmation + product care tips
+- **Email 2** (day 7): "How's your new purchase?" + review request + share on social CTA
 
 ### 4. Win-Back (inactive 60+ days)
 - Single email: "We miss you" + what's new + exclusive comeback offer. Subject: "It's been a while — come see what's new 🖤"
 
 ## Subject Line Formulas
 - **Curiosity**: "You haven't seen this yet..." / "This just dropped 👀"
-- **Benefit**: "Your phone deserves better" / "The case everyone's asking about"
+- **Benefit**: "Your setup deserves better" / "The product everyone's asking about"
 - **Urgency**: "Last chance: [Collection] selling fast" / "24 hours left"
 - **Personal**: "Picked for you, [First Name]" / "[First Name], this is SO you"
-- **Question**: "Ready for a phone glow-up?" / "What's your aesthetic?"
+- **Question**: "Ready for an upgrade?" / "What's your aesthetic?"
 
 ### Subject Line Rules
 - Max 50 characters (40 is ideal for mobile)
@@ -314,10 +314,10 @@ s4 = create_skill({
 - A/B test subject lines on every campaign (test 20%, send winner to 80%)
 
 ## Preview Text
-- Always customize — never leave blank (Klaviyo shows your first body line otherwise)
+- Always customize — never leave blank
 - Should complement, not repeat, the subject line
 - Max 90 characters
-- Example: Subject "Your phone deserves better" → Preview "New designs just dropped. Clean aesthetics only."
+- Example: Subject "Your setup deserves better" → Preview "New designs just dropped. Clean aesthetics only."
 
 ## CTA Button Text
 - Primary CTA: "Shop Now" / "Get Yours" / "See the Collection"
@@ -326,97 +326,97 @@ s4 = create_skill({
 - Button color: Black background, white text (matches brand)
 
 ## Design Notes
-- Header: GALADO logo centered on white background
+- Header: Logo centered on white background
 - Body: Clean, minimal layout. One column. Max 2 product images per email.
 - Colors: Black text on white. One accent color per email matching the campaign.
 - Font: System sans-serif. Body 16px, headings 24px.
-- Footer: Unsubscribe link, Penang address, social icons (IG, TikTok, Shopee)
-- Mobile-first: 90%+ of GALADO customers open on mobile. Test every email on mobile.
+- Footer: Unsubscribe link, business address, social icons
+- Mobile-first: 90%+ of customers open on mobile. Test every email on mobile.
 
 ## Segmentation Tips
-- **VIP segment**: 3+ orders OR total spend > RM200. Get early access + exclusive designs.
-- **Shopee buyers**: Came from Shopee → nurture toward direct website (higher margin).
+- **VIP segment**: 3+ orders OR total spend > $200. Get early access + exclusive designs.
+- **Marketplace buyers**: Came from a marketplace → nurture toward direct website (higher margin).
 - **Engagement-based**: Opened last 3 emails = "active". Didn't open last 5 = "at risk".
-- **Product interest**: Clicked on phone charms → send charm-focused content. Clicked on cases → send case drops.
+- **Product interest**: Clicked on accessories → send accessory content. Clicked on widgets → send widget drops.
 """
 })
 
 # =========================================================================
-# SKILL 5: GALADO Refund Policy
+# SKILL 5: Refund Policy Template
 # =========================================================================
 
 s5 = create_skill({
-    "name": "GALADO Refund Policy",
-    "slug": "galado-refund-policy",
-    "description": "Complete refund, return, and exchange policy for GALADO customer service.",
+    "name": "Refund Policy Template",
+    "slug": "refund-policy-template",
+    "description": "Complete refund, return, and exchange policy for customer service.",
     "category": "customer-service",
     "tags": ["refund", "policy", "cs"],
     "activation_mode": "always",
-    "content": """# GALADO Refund Policy
+    "content": """# Refund Policy
 
 ## Refund Window
-Customers can request a refund within **7 days** of receiving their order. After 7 days, no refunds are issued — only exchanges for defective items.
+Customers can request a refund within **14 days** of receiving their order. After 14 days, no refunds are issued — only exchanges for defective items.
 
 ## Refund Conditions
 A refund is approved when:
-- The item is **unused** and in **original packaging** (plastic sleeve, box if applicable)
+- The item is **unused** and in **original packaging**
 - The customer provides **order ID** and **photos** of the item
-- The request is made within the 7-day window
+- The request is made within the refund window
 
 A refund is **NOT** approved when:
-- The item has been used (visible scratches, marks, residue)
+- The item has been used (visible wear, marks, residue)
 - The customer changed their mind about the design (buyer's remorse)
 - The item was purchased during a sale or with a promo code (sale items are final sale)
-- More than 7 days have passed since delivery
+- The refund window has passed
 
 ## Refund Process
-1. Customer contacts us via Shopee chat, Instagram DM, or email (cs@galado.com.my)
-2. Crystal (CS Lead) reviews the request and asks for order ID + photos
-3. Crystal drafts a reply based on this policy
+1. Customer contacts support via chat, email, or social media DM
+2. CS Lead reviews the request and asks for order ID + photos
+3. CS Lead drafts a reply based on this policy
 4. If approved: initiate refund via the original payment method
 5. If denied: explain reason clearly and offer alternatives (exchange, store credit)
 6. Refund processing time: 3-5 business days after approval
 
 ## Exchange Policy
-- Exchanges are available within **14 days** of receiving the order
-- Customer pays return shipping; GALADO pays outgoing shipping for the replacement
-- Exchanges are for the **same product in a different design or size** — not for a different product category
+- Exchanges are available within **30 days** of receiving the order
+- Customer pays return shipping; we pay outgoing shipping for the replacement
+- Exchanges are for the **same product in a different variant** — not a different product category
 - Defective items: free exchange, no questions asked (just need photos of the defect)
 
 ## Damaged/Defective Items
 - If the item arrives damaged or defective, we offer **full replacement** — no return needed
 - Customer must send photos showing the damage within 48 hours of delivery
 - We ship the replacement within 1-2 business days
-- If the same design is out of stock, offer store credit or a different design of equal value
+- If the same variant is out of stock, offer store credit or a different variant of equal value
 
-## Shopee Orders vs Direct Orders
-### Shopee
-- Refunds go through Shopee's built-in return/refund system
-- Customer initiates return on Shopee → Crystal approves/denies in Shopee Seller Centre
-- Follow Shopee's timelines (vary by campaign)
-- Shopee holds the funds — refund is processed by Shopee, not us
+## Marketplace Orders vs Direct Orders
+### Marketplace
+- Refunds go through the marketplace's built-in return/refund system
+- Customer initiates return on the platform → CS approves/denies in Seller Centre
+- Follow platform's timelines (vary by campaign)
+- Platform holds the funds — refund is processed by the platform, not us
 
-### Direct Orders (WooCommerce / Instagram DM)
+### Direct Orders (Website / Social DM)
 - Refunds processed manually via bank transfer or original payment gateway
-- Crystal handles the full process end-to-end
+- CS handles the full process end-to-end
 - Keep records: screenshot of refund confirmation, customer acknowledgment
 
 ## Response Templates
 
 ### Approved Refund
-"Hi [Name]! Thank you for reaching out. We've reviewed your return request for order [#ORDER] and it's been approved. We'll process your refund of RM[amount] within 3-5 business days to your original payment method. If you have any questions, just message us! 🤍"
+"Hi [Name]! Thank you for reaching out. We've reviewed your return request for order [#ORDER] and it's been approved. We'll process your refund of $[amount] within 3-5 business days to your original payment method. If you have any questions, just message us! 🤍"
 
 ### Denied Refund
-"Hi [Name], thank you for contacting us about order [#ORDER]. Unfortunately, we're unable to process a refund because [reason — e.g., the item shows signs of use / the 7-day window has passed]. However, we'd love to help — would you be interested in exchanging for a different design? Let us know! 🖤"
+"Hi [Name], thank you for contacting us about order [#ORDER]. Unfortunately, we're unable to process a refund because [reason — e.g., the item shows signs of use / the refund window has passed]. However, we'd love to help — would you be interested in exchanging for a different variant? Let us know! 🖤"
 
 ### Defective Item
 "Oh no, we're so sorry about that! 😟 Thank you for the photos. We'll ship out a replacement right away — no need to return the defective one. Your new [product] should arrive within 3-5 business days. We appreciate your patience!"
 
 ## Escalation
 If a customer is upset or the situation is complex:
-1. Crystal handles first response
-2. If unresolved, escalate to Maven (Marketing Manager) for PR-sensitive cases
-3. For refunds over RM100, get approval from Clement (admin) before processing
+1. CS Lead handles first response
+2. If unresolved, escalate to Marketing Manager for PR-sensitive cases
+3. For refunds over $100, get approval from admin before processing
 """
 })
 
@@ -427,7 +427,7 @@ If a customer is upset or the situation is complex:
 s6 = create_skill({
     "name": "Meta Ads Copy Rules",
     "slug": "meta-ads-copy-rules",
-    "description": "Ad copy structure, compliance rules, and GALADO-specific creative angles for Meta (Facebook/Instagram) ads.",
+    "description": "Ad copy structure, compliance rules, and creative angles for Meta (Facebook/Instagram) ads.",
     "category": "advertising",
     "tags": ["meta", "ads", "facebook", "instagram"],
     "activation_mode": "board",
@@ -438,10 +438,10 @@ s6 = create_skill({
 
 ### Headline (max 40 characters)
 The first thing people see. Must be benefit-driven and specific.
-- Good: "Cases That Match Your Aesthetic"
-- Good: "Premium Protection, Minimal Design"
-- Bad: "GALADO Phone Cases For Sale"
-- Bad: "Best Phone Case Malaysia"
+- Good: "Widgets That Match Your Aesthetic"
+- Good: "Premium Quality, Minimal Design"
+- Bad: "Acme Co Widgets For Sale"
+- Bad: "Best Widgets Online"
 
 ### Primary Text (max 125 characters for optimal display)
 Appears above the image/video. This is your hook + value prop.
@@ -451,14 +451,14 @@ Appears above the image/video. This is your hook + value prop.
 
 ### Description (max 30 characters)
 Appears below the headline. Supporting detail.
-- "Free shipping over RM50"
-- "Ships from Penang 📦"
+- "Free shipping over $50"
+- "Ships within 24 hours 📦"
 - "100+ designs available"
 
 ## Compliance Rules
 These are hard rules — violating them risks ad rejection or account issues:
 - **No exaggerated claims**: Don't say "best", "most popular", "guaranteed" without qualification
-- **No before/after implications**: Don't imply the phone case changes your life
+- **No before/after implications**: Don't imply the product changes your life
 - **No urgency manipulation**: "Last chance" is okay; "You'll regret not buying" is not
 - **No competitor mentions**: Never name another brand
 - **No personal attributes**: Don't say "If you're stylish..." (Meta flags this as targeting by personal attribute)
@@ -479,34 +479,34 @@ Always test at least 2 variations per ad set:
 - Run each test for minimum 3 days or 1,000 impressions before judging
 - Winner = lower CPA, not higher CTR (optimise for purchases, not clicks)
 
-## GALADO-Specific Angles That Work
+## Creative Angles That Work
 
 ### 1. Aesthetic Identity
-"Your phone case says a lot about you. Make it count."
-Angle: Position the case as self-expression, not just protection.
+"Your setup says a lot about you. Make it count."
+Angle: Position the product as self-expression, not just utility.
 
 ### 2. Premium but Accessible
 "Premium design doesn't need a premium price."
-Angle: GALADO quality at RM29-49 — cheaper than international brands.
+Angle: High quality at $19-39 — better value than big-name competitors.
 
 ### 3. Clean Minimalism
 "Less is more. Black, white, and one perfect accent."
 Angle: Lean into the black & white brand identity with a single pop color.
 
-### 4. Made in Malaysia
-"Designed in Penang, loved across Malaysia."
-Angle: Support local brand angle — works well in Malaysia market.
+### 4. Small Brand, Big Quality
+"Designed with care, loved by thousands."
+Angle: Support small business angle — works well across markets.
 
 ### 5. Customization
 "Make it yours. Add your name, your initials, your vibe."
-Angle: Customizable cases are a USP — nobody else does this locally at this price.
+Angle: Customization is a key differentiator at this price point.
 
 ### 6. Collection Drops
 "New drop just landed. Limited designs."
 Angle: Create urgency and exclusivity around new collections.
 
 ## Ad Creative Notes
-- Product images should show the case on a phone (never floating alone)
+- Product images should show the item in use (never floating alone)
 - Use black or white backgrounds — stay on brand
 - One accent color per ad creative, matching the featured product's collection
 - Lifestyle shots outperform studio shots for engagement
@@ -521,7 +521,7 @@ Angle: Create urgency and exclusivity around new collections.
 s7 = create_skill({
     "name": "SEO Content Brief",
     "slug": "seo-content-brief",
-    "description": "How to create SEO content briefs for GALADO blog posts and landing pages.",
+    "description": "How to create SEO content briefs for blog posts and landing pages.",
     "category": "seo",
     "tags": ["seo", "content", "keywords"],
     "activation_mode": "tag",
@@ -535,14 +535,14 @@ Every SEO content brief must include these sections:
 - Primary keyword (1 main keyword the page targets)
 - Secondary keywords (3-5 related terms)
 - Long-tail variations (2-3 question-based or specific queries)
-- Example: Primary "phone case Malaysia" → Secondary "custom phone case", "aesthetic phone case" → Long-tail "where to buy custom phone case in Malaysia"
+- Example: Primary "premium widgets online" → Secondary "custom widgets", "designer widgets" → Long-tail "where to buy custom widgets online"
 
 ### 2. Search Intent
 Identify what the searcher actually wants:
-- **Informational**: They want to learn (e.g., "how to clean phone case") → Write a guide
-- **Commercial**: They're comparing options (e.g., "best phone case brands Malaysia") → Write a comparison/review
-- **Transactional**: They're ready to buy (e.g., "buy GALADO phone case online") → Optimize product/category page
-- **Navigational**: They're looking for us specifically (e.g., "GALADO Shopee") → Ensure brand pages rank
+- **Informational**: They want to learn (e.g., "how to care for premium widgets") → Write a guide
+- **Commercial**: They're comparing options (e.g., "best widget brands") → Write a comparison/review
+- **Transactional**: They're ready to buy (e.g., "buy custom widgets online") → Optimize product/category page
+- **Navigational**: They're looking for us specifically (e.g., "Acme Co shop") → Ensure brand pages rank
 
 ### 3. Recommended Word Count
 - Product category pages: 500-800 words
@@ -569,14 +569,14 @@ List the top 3-5 currently ranking pages:
 ### Title Tag
 - Include primary keyword, ideally near the beginning
 - Max 60 characters
-- Include brand name at the end: "... | GALADO"
-- Example: "Custom Phone Cases Malaysia — Design Your Own | GALADO"
+- Include brand name at the end: "... | Acme Co"
+- Example: "Custom Premium Widgets — Design Your Own | Acme Co"
 
 ### Meta Description
 - 150-160 characters
 - Include primary keyword
 - Include a CTA or value prop
-- Example: "Design your own custom phone case with GALADO. Premium quality, aesthetic designs, ships from Penang. Browse 100+ styles from RM29."
+- Example: "Design your own custom widget with Acme Co. Premium quality, aesthetic designs, fast shipping. Browse 100+ styles from $19."
 
 ### Headings
 - H1: One per page, includes primary keyword
@@ -585,8 +585,8 @@ List the top 3-5 currently ranking pages:
 
 ### Image Alt Text
 - Every image needs descriptive alt text
-- Include keywords where natural: "GALADO black and white phone case on iPhone 16"
-- Don't keyword-stuff: not "phone case Malaysia buy cheap phone case online"
+- Include keywords where natural: "Acme Co black and white premium widget"
+- Don't keyword-stuff: not "widget buy cheap widget online best widget"
 
 ### Internal Linking
 - Link to 3-5 related pages from every new content piece
@@ -594,27 +594,26 @@ List the top 3-5 currently ranking pages:
 - Priority links: product pages, collection pages, related blog posts
 - Every blog post should link to at least 1 product page
 
-## GALADO Keyword Clusters
+## Keyword Clusters
 
 ### Cluster 1: Product Keywords
-- phone case Malaysia, custom phone case, aesthetic phone case, phone case Penang, phone casing online Malaysia
+- premium widgets, custom widgets, designer widgets, widgets online, handmade widgets
 
 ### Cluster 2: Brand Keywords
-- GALADO, GALADO phone case, GALADO Shopee, GALADO review
+- Acme Co, Acme Co widgets, Acme Co shop, Acme Co review
 
 ### Cluster 3: Design Keywords
-- minimalist phone case, kawaii phone case, cute phone case Malaysia, black and white phone case
+- minimalist widgets, aesthetic widgets, modern widgets, black and white widgets
 
 ### Cluster 4: Gifting Keywords
-- phone case gift, customized gift Malaysia, personalized phone case
+- widget gift, customized gift, personalized widget
 
 ### Cluster 5: Informational Keywords
-- how to clean phone case, best phone case material, TPU vs polycarbonate case, how to choose phone case
+- how to care for widgets, best widget material, how to choose a widget
 
 ## Content Quality Standards
 - No AI-sounding filler text — every sentence should add value
-- Include real GALADO product examples where relevant
-- Use Malaysian English (colour, favourite, etc.)
+- Include real product examples where relevant
 - Add original images or suggest image requirements for each section
 - Include at least one data point, statistic, or specific detail per major section
 """
@@ -627,7 +626,7 @@ List the top 3-5 currently ranking pages:
 s8 = create_skill({
     "name": "TikTok Hook Formula",
     "slug": "tiktok-hook-formula",
-    "description": "First 3 seconds rules, trending formats, and GALADO product showcase angles for TikTok.",
+    "description": "First 3 seconds rules, trending formats, and product showcase angles for TikTok.",
     "category": "social-media",
     "tags": ["tiktok", "video", "hooks"],
     "activation_mode": "board",
@@ -635,52 +634,52 @@ s8 = create_skill({
     "content": """# TikTok Hook Formula
 
 ## The First 3 Seconds Rule
-TikTok's algorithm decides whether to push your video within the first 1-3 seconds based on watch-through rate. If viewers scroll past, the video dies. Every GALADO TikTok must nail the opening.
+TikTok's algorithm decides whether to push your video within the first 1-3 seconds based on watch-through rate. If viewers scroll past, the video dies. Every TikTok must nail the opening.
 
 ### Hook Types That Work
 
 #### 1. Pattern Interrupt
 Show something unexpected that makes the viewer pause.
-- Extreme close-up of a case detail, then pull back to reveal the full design
-- Hand slamming a phone case onto a table dramatically
+- Extreme close-up of a product detail, then pull back to reveal the full design
+- Hand placing the product down dramatically
 - Black screen → sudden color pop revealing the product
 
 #### 2. Question Hook
 Ask something the viewer wants answered.
-- "Why do aesthetic girls always have the best phone cases?"
-- "Is this the prettiest case under RM30?"
-- "Guess how much this case costs 👀"
+- "Why do aesthetic people always have the best setups?"
+- "Is this the best-looking widget under $25?"
+- "Guess how much this costs 👀"
 
 #### 3. Bold Claim
 Make a statement that demands attention.
-- "This RM29 case looks better than most RM100 ones"
-- "The only phone case brand worth buying in Malaysia"
-- "I designed this case and it sold out in 3 hours"
+- "This $19 widget looks better than most $100 ones"
+- "The only brand worth buying from"
+- "I designed this and it sold out in 3 hours"
 
 #### 4. POV / Scenario
 Put the viewer in a relatable situation.
-- "POV: You finally find a case that matches your aesthetic"
-- "When someone asks where you got your phone case"
-- "Me choosing a new case for the 5th time this month"
+- "POV: You finally find a product that matches your aesthetic"
+- "When someone asks where you got your widget"
+- "Me choosing a new design for the 5th time this month"
 
 #### 5. Trend Jacking
-Use a trending sound or format but make it about phone cases.
-- Adapt trending "get ready with me" → "get ready with my phone"
-- Use trending transition sounds for before/after (old case → GALADO case)
+Use a trending sound or format but make it about your product.
+- Adapt trending "get ready with me" → "get ready with my setup"
+- Use trending transition sounds for before/after reveals
 
-## GALADO Product Showcase Angles
+## Product Showcase Angles
 
 ### The Unboxing
-Show the clean black packaging → opening → revealing the case → putting it on phone. Satisfying, ASMR-friendly. Works every time.
+Show the clean black packaging → opening → revealing the product → putting it to use. Satisfying, ASMR-friendly. Works every time.
 
 ### The Aesthetic Flat Lay
-Case laid out with matching items (bag, coffee, earbuds). Slow pan. Clean background. One accent color theme. Very GALADO.
+Product laid out with matching items. Slow pan. Clean background. One accent color theme. On-brand perfection.
 
 ### The Swap
-Old boring case → dramatic swap to GALADO case. Use a trending transition. Before/after energy.
+Old boring product → dramatic swap to the new one. Use a trending transition. Before/after energy.
 
 ### The Collection
-"My GALADO collection" — fan out multiple cases. Show variety. Triggers "I want all of them" response.
+"My collection" — fan out multiple variants. Show variety. Triggers "I want all of them" response.
 
 ### The Customization
 Show the process: typing a name, choosing a design, receiving the final product. Personalization content performs well.
@@ -688,7 +687,7 @@ Show the process: typing a name, choosing a design, receiving the final product.
 ## Sound & Music Guidelines
 - Always use trending sounds — check TikTok's Creative Center for what's trending
 - If using original audio, keep it short and punchy
-- ASMR sounds work well for product videos (case clicking onto phone, packaging sounds)
+- ASMR sounds work well for product videos (clicking, packaging sounds)
 - Music choice should match the vibe: lo-fi for aesthetic, upbeat for energetic, trending for discoverability
 
 ## Optimal Video Specs
@@ -706,8 +705,8 @@ Show the process: typing a name, choosing a design, receiving the final product.
 
 ## Posting Strategy
 - Post 1-2 times per day during testing phases
-- Best times for Malaysian audience: 12pm-2pm, 7pm-10pm
-- Use 3-5 hashtags (less is more on TikTok): #fyp #phonecasemalaysia #GALADO #aesthetic + 1 trending
+- Best times vary by audience — test and iterate
+- Use 3-5 hashtags (less is more on TikTok): #fyp #aesthetic #premiumwidgets + 1-2 trending
 - Cross-post to Instagram Reels with minor adjustments (remove TikTok watermark)
 """
 })
@@ -719,7 +718,7 @@ Show the process: typing a name, choosing a design, receiving the final product.
 s9 = create_skill({
     "name": "Monthly Report Template",
     "slug": "monthly-report-template",
-    "description": "Standard structure and KPI definitions for GALADO's monthly performance reports.",
+    "description": "Standard structure and KPI definitions for monthly performance reports.",
     "category": "reporting",
     "tags": ["report", "analytics", "monthly"],
     "activation_mode": "tag",
@@ -742,9 +741,8 @@ Present all KPIs in a single table with these columns:
 
 | KPI | This Month | Last Month | Change (%) | Target | Status |
 |-----|-----------|------------|------------|--------|--------|
-| Revenue | RM X | RM Y | +/-Z% | RM T | 🟢/🟡/🔴 |
+| Revenue | $X | $Y | +/-Z% | $T | 🟢/🟡/🔴 |
 | Orders | ... | ... | ... | ... | ... |
-| ... | ... | ... | ... | ... | ... |
 
 Status indicators:
 - 🟢 On target or above (≥95% of target)
@@ -753,17 +751,17 @@ Status indicators:
 
 ### 3. Channel Breakdown
 For each active channel, provide:
-- Revenue contribution (RM and % of total)
+- Revenue contribution ($ and % of total)
 - Order count
 - Average order value (AOV)
 - Top performing products
 - Notable changes from last month
 
 Channels to cover:
-- Shopee (main marketplace)
+- Primary marketplace
 - Instagram (DM orders + Shop)
 - TikTok (TikTok Shop)
-- WooCommerce (direct website)
+- Direct website
 
 ### 4. Top Performers
 - Top 5 products by revenue
@@ -777,7 +775,7 @@ Channels to cover:
 - Root cause analysis (not just symptoms)
 - Customer complaints summary (themes, volume, resolution rate)
 - Inventory issues (stockouts, overstocks)
-- Any platform issues (Shopee penalties, ad account problems)
+- Any platform issues (marketplace penalties, ad account problems)
 
 ### 6. Next Month Plan
 - 3-5 specific action items with owners
@@ -809,11 +807,11 @@ Channels to cover:
 - **Content Saves**: Number of saves (strongest intent signal on Instagram)
 
 ## Data Sources
-- **Shopee**: Shopee Seller Centre → Business Insights
+- **Marketplace**: Seller Centre → Business Insights
 - **Meta Ads**: Meta Ads Manager → export campaign data
 - **Instagram**: Instagram Professional Dashboard → Insights
 - **TikTok**: TikTok Business Centre → Analytics
-- **WooCommerce**: WooCommerce dashboard → Reports
+- **Website**: Analytics dashboard → Reports
 - **GA4**: Google Analytics 4 (if configured) for website traffic
 
 ## Comparison Format
@@ -954,11 +952,11 @@ Example:
 # =========================================================================
 print("\nAssigning skills to agents...")
 
-# Skill 1: Shopee Product Listing → Wordsmith
+# Skill 1: E-Commerce Product Listing → Wordsmith
 assign_skill([AGENTS["Wordsmith"]], s1)
 print("  Skill 1 → Wordsmith")
 
-# Skill 2: GALADO Brand Guidelines → ALL agents
+# Skill 2: Brand Guidelines → ALL agents
 assign_skill(ALL_AGENT_IDS, s2)
 print("  Skill 2 → ALL agents")
 
@@ -966,11 +964,11 @@ print("  Skill 2 → ALL agents")
 assign_skill([AGENTS["Wordsmith"], AGENTS["Vira"]], s3)
 print("  Skill 3 → Wordsmith, Vira")
 
-# Skill 4: Klaviyo Email Templates → Klay
+# Skill 4: Email Marketing Templates → Klay
 assign_skill([AGENTS["Klay"]], s4)
 print("  Skill 4 → Klay")
 
-# Skill 5: GALADO Refund Policy → Crystal
+# Skill 5: Refund Policy Template → Crystal
 assign_skill([AGENTS["Crystal"]], s5)
 print("  Skill 5 → Crystal")
 

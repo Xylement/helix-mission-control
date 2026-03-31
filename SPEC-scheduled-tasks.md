@@ -8,7 +8,7 @@ Allow HELIX users to configure agents with recurring schedules — "every mornin
 ## Context
 
 - Codebase: `~/helix-staging/` (staging branch)
-- Existing pattern: GALADO already uses external crons for Crystal email polling and daily marketing standup. This feature makes that self-serve for customers.
+- Existing pattern: Organizations already use external crons for email polling and daily standups. This feature makes that self-serve for customers.
 - Existing background task pattern: `periodic_backup_scheduler()` in main.py runs hourly — follow this pattern
 - Task creation flow: `routers/tasks.py` → `create_task()` → `_maybe_auto_dispatch()`
 - Org timezone: `organization_settings.timezone` (default Asia/Kuala_Lumpur)

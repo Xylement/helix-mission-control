@@ -10,10 +10,10 @@ from app.models.organization import Organization
 from app.models.organization_settings import OrganizationSettings
 
 USERS = [
-    {"name": "Clement", "email": "clement@galado.com.my", "role": "admin", "password": "helix2024!"},
-    {"name": "Sherlyn", "email": "sherlyn@galado.com.my", "role": "member", "password": "helix2024!"},
-    {"name": "Akram", "email": "akram@galado.com.my", "role": "member", "password": "helix2024!"},
-    {"name": "Amy", "email": "amy@galado.com.my", "role": "member", "password": "helix2024!"},
+    {"name": "Clement", "email": "clement@demo.example.com", "role": "admin", "password": "helix2024!"},
+    {"name": "Sherlyn", "email": "sherlyn@demo.example.com", "role": "member", "password": "helix2024!"},
+    {"name": "Akram", "email": "akram@demo.example.com", "role": "member", "password": "helix2024!"},
+    {"name": "Amy", "email": "amy@demo.example.com", "role": "member", "password": "helix2024!"},
     {"name": "Helix", "email": "helix@system.internal", "role": "system", "password": "helix-system-nologin"},
 ]
 
@@ -60,11 +60,11 @@ async def seed_all(db: AsyncSession):
     if existing:
         return
 
-    # Ensure GALADO org exists
-    org_result = await db.execute(select(Organization).where(Organization.slug == "galado"))
+    # Ensure org exists
+    org_result = await db.execute(select(Organization).where(Organization.slug == "demo"))
     org = org_result.scalar_one_or_none()
     if not org:
-        org = Organization(name="GALADO", slug="galado")
+        org = Organization(name="Demo Company", slug="demo")
         db.add(org)
         await db.flush()
 

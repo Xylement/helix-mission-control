@@ -1,17 +1,17 @@
 """
-GA4 and Google Search Console Integration for GALADO
+GA4 and Google Search Console Integration
 """
 import os
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-load_dotenv(".env.galado-analytics")
+load_dotenv(".env.analytics")
 
-GA4_PROPERTY_ID = os.getenv("GA4_PROPERTY_ID", "357446757")
-GSC_SITE_URL = os.getenv("GSC_SITE_URL", "sc-domain:galado.com.my")
+GA4_PROPERTY_ID = os.getenv("GA4_PROPERTY_ID", "")
+GSC_SITE_URL = os.getenv("GSC_SITE_URL", "")
 CREDENTIALS_PATH = os.getenv(
     "GOOGLE_APPLICATION_CREDENTIALS",
-    "credentials/galado-ga4-gsc-service-account.json",
+    "credentials/ga4-gsc-service-account.json",
 )
 
 

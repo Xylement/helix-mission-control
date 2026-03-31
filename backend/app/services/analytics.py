@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 logger = logging.getLogger("helix.analytics")
 
 GA4_PROPERTY_ID = os.getenv("GA4_PROPERTY_ID", "357446757")
-GSC_SITE_URL = os.getenv("GSC_SITE_URL", "sc-domain:galado.com.my")
+GSC_SITE_URL = os.getenv("GSC_SITE_URL", "")
 CREDENTIALS_PATH = os.getenv(
     "GOOGLE_APPLICATION_CREDENTIALS",
-    "credentials/galado-ga4-gsc-service-account.json",
+    "credentials/ga4-gsc-service-account.json",
 )
 
 # Agent names or board IDs that should receive analytics context
