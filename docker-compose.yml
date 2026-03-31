@@ -137,6 +137,7 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-auto}
       - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
+      - BACKEND_URL=http://backend:8000
     healthcheck:
       test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3000 || exit 1"]
       interval: 30s
