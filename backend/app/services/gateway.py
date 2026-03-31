@@ -551,7 +551,10 @@ class OpenClawGateway:
             if text:
                 chat["text"] = text
 
-            # Buffer final trace steps
+            # Reset trace buffer and rebuild from final (complete) content
+            # Delta events only contain partial text; final has the full response
+            chat["trace_steps_buffer"] = []
+            chat["trace_step_counter"] = 0
             self._buffer_trace_steps(chat, content)
 
             task_id = chat["task_id"]

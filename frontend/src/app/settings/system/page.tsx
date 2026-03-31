@@ -23,6 +23,15 @@ import {
   Lock,
   Clock,
   Ban,
+  ChevronDown,
+  ChevronRight,
+  Coins,
+  CalendarClock,
+  Target,
+  ScanSearch,
+  Users,
+  RotateCw,
+  Paintbrush,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -84,6 +93,55 @@ function StatusBadge({ status }: { status: string }) {
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }
+}
+
+const CHANGELOG_ITEMS = [
+  { icon: Coins, label: "Token Budgets", desc: "Per-agent monthly USD spending limits with auto-pause. Cost dashboard at /costs." },
+  { icon: CalendarClock, label: "Scheduled Tasks", desc: "Cron-like recurring task schedules. Overview at /schedules." },
+  { icon: Target, label: "Goal Hierarchy", desc: "Organization mission, objectives, key results linked to tasks. /goals page." },
+  { icon: ScanSearch, label: "Execution Tracing", desc: "View every LLM reasoning step and tool call on completed tasks." },
+  { icon: Users, label: "Agent Delegation", desc: "Agents can delegate sub-tasks to specialists. Human-approved." },
+  { icon: RotateCw, label: "Update Daemon", desc: "Build timeout, progress stages, cancel button." },
+  { icon: Paintbrush, label: "White Label Reset", desc: "Reset branding to defaults with one click." },
+];
+
+function WhatsNewCard() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full text-left"
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ArrowUpCircle className="h-4 w-4" />
+            What&apos;s New in v1.3.0
+            {open ? (
+              <ChevronDown className="h-4 w-4 ml-auto text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
+            )}
+          </CardTitle>
+        </CardHeader>
+      </button>
+      {open && (
+        <CardContent className="pt-0">
+          <ul className="space-y-3">
+            {CHANGELOG_ITEMS.map((item) => (
+              <li key={item.label} className="flex items-start gap-3">
+                <item.icon className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                <div>
+                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-sm text-muted-foreground"> — {item.desc}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      )}
+    </Card>
+  );
 }
 
 export default function SystemSettingsPage() {
@@ -388,6 +446,9 @@ export default function SystemSettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* What's New */}
+      <WhatsNewCard />
 
       {/* Update History */}
       {history.length > 0 && (
