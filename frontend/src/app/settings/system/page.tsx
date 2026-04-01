@@ -32,6 +32,14 @@ import {
   Users,
   RotateCw,
   Paintbrush,
+  Globe,
+  Shuffle,
+  Wrench,
+  Plug,
+  Shield,
+  Settings,
+  Camera,
+  BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -95,7 +103,18 @@ function StatusBadge({ status }: { status: string }) {
   }
 }
 
-const CHANGELOG_ITEMS = [
+const CHANGELOG_131_ITEMS = [
+  { icon: Globe, label: "Google Gemini", desc: "Native provider with Gemini 2.5 Pro, Flash, and Flash Lite models. Free API keys from Google AI Studio." },
+  { icon: Shuffle, label: "OpenRouter", desc: "Access 300+ models from all major providers through one API key." },
+  { icon: Wrench, label: "License Management", desc: "Admin dashboard: extend trials, edit expiry, change status, delete licenses, event history." },
+  { icon: Plug, label: "API Proxy", desc: "Fresh installs work without Nginx. Docker Desktop installs just work out of the box." },
+  { icon: Shield, label: "Install Hardening", desc: "macOS root guard, user-writable logs, pre-created directories." },
+  { icon: Settings, label: "Update Daemon", desc: "systemd service auto-created on Linux installs." },
+  { icon: Camera, label: "Landing Page", desc: "Real product screenshots, tabbed demo, feature showcase with v1.3.0 highlights." },
+  { icon: BookOpen, label: "Knowledge Base", desc: "14 feature docs pages with screenshots at docs.helixnode.tech/features/." },
+];
+
+const CHANGELOG_130_ITEMS = [
   { icon: Coins, label: "Token Budgets", desc: "Per-agent monthly USD spending limits with auto-pause. Cost dashboard at /costs." },
   { icon: CalendarClock, label: "Scheduled Tasks", desc: "Cron-like recurring task schedules. Overview at /schedules." },
   { icon: Target, label: "Goal Hierarchy", desc: "Organization mission, objectives, key results linked to tasks. /goals page." },
@@ -105,8 +124,8 @@ const CHANGELOG_ITEMS = [
   { icon: Paintbrush, label: "White Label Reset", desc: "Reset branding to defaults with one click." },
 ];
 
-function WhatsNewCard() {
-  const [open, setOpen] = useState(false);
+function ChangelogSection({ title, items, defaultOpen }: { title: string; items: typeof CHANGELOG_131_ITEMS; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <Card>
       <button
@@ -116,7 +135,7 @@ function WhatsNewCard() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ArrowUpCircle className="h-4 w-4" />
-            What&apos;s New in v1.3.0
+            {title}
             {open ? (
               <ChevronDown className="h-4 w-4 ml-auto text-muted-foreground" />
             ) : (
@@ -128,7 +147,7 @@ function WhatsNewCard() {
       {open && (
         <CardContent className="pt-0">
           <ul className="space-y-3">
-            {CHANGELOG_ITEMS.map((item) => (
+            {items.map((item) => (
               <li key={item.label} className="flex items-start gap-3">
                 <item.icon className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
                 <div>
@@ -448,7 +467,8 @@ export default function SystemSettingsPage() {
       </Card>
 
       {/* What's New */}
-      <WhatsNewCard />
+      <ChangelogSection title="What's New in v1.3.1" items={CHANGELOG_131_ITEMS} defaultOpen={false} />
+      <ChangelogSection title="What's New in v1.3.0" items={CHANGELOG_130_ITEMS} defaultOpen={false} />
 
       {/* Update History */}
       {history.length > 0 && (
