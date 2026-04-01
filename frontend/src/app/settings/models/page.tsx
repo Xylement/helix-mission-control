@@ -480,7 +480,7 @@ export default function AIModelsPage() {
                 type="password"
                 value={formApiKey}
                 onChange={(e) => handleFormApiKeyChange(e.target.value)}
-                placeholder={editingModel ? "Leave blank to keep current" : "sk-..."}
+                placeholder={editingModel ? "Leave blank to keep current" : `${PROVIDER_KEY_PREFIXES[formProvider] || "sk-"}...`}
               />
               {autoSwitchMsg && (
                 <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
