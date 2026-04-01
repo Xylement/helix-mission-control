@@ -117,6 +117,16 @@ case "${MODEL_PROVIDER:-moonshot}" in
     API_KEY_ENV="NVIDIA_API_KEY"
     API_TYPE="openai-completions"
     ;;
+  gemini|google_gemini)
+    BASE_URL="${MODEL_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai}"
+    API_KEY_ENV="GEMINI_API_KEY"
+    API_TYPE="openai-completions"
+    ;;
+  openrouter)
+    BASE_URL="${MODEL_BASE_URL:-https://openrouter.ai/api/v1}"
+    API_KEY_ENV="OPENROUTER_API_KEY"
+    API_TYPE="openai-completions"
+    ;;
   kimi-coding|kimi_code)
     BASE_URL="${MODEL_BASE_URL:-https://api.kimi.com/coding}"
     API_KEY_ENV="KIMI_API_KEY"

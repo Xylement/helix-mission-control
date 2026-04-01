@@ -39,6 +39,8 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com/v1",
   nvidia: "https://integrate.api.nvidia.com/v1",
+  gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
+  openrouter: "https://openrouter.ai/api/v1",
   kimi_code: "https://api.kimi.com/coding",
   custom: "",
 };
@@ -48,6 +50,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
   nvidia: "NVIDIA",
+  gemini: "Google Gemini",
+  openrouter: "OpenRouter",
   kimi_code: "Kimi Code (Advanced)",
   custom: "Custom",
 };
@@ -57,6 +61,8 @@ const PROVIDER_COLORS: Record<string, string> = {
   openai: "bg-green-500/15 text-green-600 dark:text-green-400",
   anthropic: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
   nvidia: "bg-lime-500/15 text-lime-600 dark:text-lime-400",
+  gemini: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  openrouter: "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400",
   kimi_code: "bg-purple-500/15 text-purple-600 dark:text-purple-400",
   custom: "bg-gray-500/15 text-gray-600 dark:text-gray-400",
 };
@@ -66,11 +72,14 @@ const PROVIDER_SUGGESTIONS: Record<string, string[]> = {
   openai: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.2", "gpt-4o", "gpt-4o-mini"],
   anthropic: ["claude-opus-4-6-20250205", "claude-sonnet-4-6-20250217", "claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250514", "claude-opus-4-5-20251124"],
   nvidia: ["meta/llama-3.1-405b-instruct", "meta/llama-3.1-70b-instruct", "mistralai/mixtral-8x22b-instruct-v0.1"],
+  gemini: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview"],
+  openrouter: ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "anthropic/claude-sonnet-4", "openai/gpt-5.4", "meta-llama/llama-4-maverick", "deepseek/deepseek-r1"],
   kimi_code: ["k2p5"],
   custom: [],
 };
 
 const PROVIDER_NOTES: Record<string, string> = {
+  openrouter: "Access 300+ models through one API key. Browse all models at openrouter.ai/models",
   kimi_code: "Requires manual OpenClaw setup via SSH. Use Moonshot for automatic setup.",
 };
 
@@ -79,10 +88,12 @@ const PROVIDER_KEY_PREFIXES: Record<string, string> = {
   openai: "sk-",
   anthropic: "sk-ant-",
   nvidia: "nvapi-",
+  gemini: "AIza",
+  openrouter: "sk-or-",
   kimi_code: "sk-kimi-",
 };
 
-const PROVIDERS = ["moonshot", "openai", "anthropic", "nvidia", "kimi_code", "custom"];
+const PROVIDERS = ["moonshot", "openai", "anthropic", "nvidia", "gemini", "openrouter", "kimi_code", "custom"];
 
 export default function AIModelsPage() {
   const { user } = useAuth();

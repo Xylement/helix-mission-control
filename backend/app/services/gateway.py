@@ -551,7 +551,10 @@ class OpenClawGateway:
             if text:
                 chat["text"] = text
 
-            # Buffer final trace steps
+            # Reset trace buffer and rebuild from final (complete) content
+            # Delta events only contain partial text; final has the full response
+            chat["trace_steps_buffer"] = []
+            chat["trace_step_counter"] = 0
             self._buffer_trace_steps(chat, content)
 
             task_id = chat["task_id"]
@@ -1327,6 +1330,8 @@ class OpenClawGateway:
                 "openai": "OPENAI_API_KEY",
                 "anthropic": "ANTHROPIC_API_KEY",
                 "nvidia": "NVIDIA_API_KEY",
+                "gemini": "GEMINI_API_KEY",
+                "openrouter": "OPENROUTER_API_KEY",
                 "custom": "CUSTOM_API_KEY",
             }
             api_key_env = key_env_map.get(provider, "CUSTOM_API_KEY")
