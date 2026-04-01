@@ -847,7 +847,7 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `backend/app/main.py` — Registered version router.
 - `docker-compose.yml` — Added `./VERSION:/app/VERSION:ro` and `./data:/app/data` volume mounts to backend.
 - `.gitignore` — Added `.update-trigger`, `.update-result`, `.update-history`, `.pre-update-commit` and their `data/` equivalents.
-- `install.sh` — Added update daemon setup: creates `data/` dir, installs `helix-updater.service` systemd unit (idempotent).
+- `install.sh` — Added update daemon setup: creates `data/` dir, installs `helix-updater.service` systemd unit (overwrites on each install to stay current).
 - `frontend/src/components/sidebar.tsx` — Added "System" (Monitor icon) to admin nav items. Added version display (v1.0.0) in sidebar footer with blue dot for updates. Added update available banner linking to Settings > System.
 - `frontend/src/lib/api.ts` — Added version API methods (getVersion, checkForUpdates, triggerUpdate, getUpdateHistory) and types (VersionInfo, UpdateTriggerResponse, UpdateHistoryItem).
 - `helixnode-api/app/main.py` — Registered version router.
@@ -855,7 +855,7 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 
 **Update flow:** Admin clicks "Update Now" in Settings > System → enters password → backend writes `data/.update-trigger` → host daemon detects trigger → writes progress stages → git pull → docker compose up --build (10min timeout) → wait 90s → health check → success or auto-rollback → writes result to `data/.update-result` → frontend polls `/api/version` every 15s and shows staged progress. Cancel: admin clicks "Cancel Update" → enters password → backend writes `data/.update-cancel` → daemon detects at next stage boundary → aborts and writes cancelled status.
 
-**Systemd service:** `helix-updater.service` — runs `update-daemon.sh` as root, auto-restarts.
+**Systemd service:** `helix-updater.service` — runs `update-daemon.sh` as root, restarts on failure. Service unit includes `Requires=docker.service`, journal logging (`SyslogIdentifier=helix-updater`), and explicit `PATH`/`HOME` environment. `install.sh` creates the service automatically on Linux installs (overwrites on each install to stay current). For existing installs, the service file is at `~/helix-updater.service` — copy to `/etc/systemd/system/` and enable manually.
 
 ### March 27, 2026 — Agent Intelligence Skills Pack (Marketplace)
 

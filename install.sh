@@ -603,24 +603,28 @@ install_updater_linux() {
     chown "$HELIX_USER:$HELIX_USER" "${INSTALL_DIR}/data"
     chmod +x "${INSTALL_DIR}/update-daemon.sh"
 
-    if [ ! -f /etc/systemd/system/helix-updater.service ]; then
-        cat > /etc/systemd/system/helix-updater.service << UPDATER_EOF
+    cat > /etc/systemd/system/helix-updater.service << UPDATER_EOF
 [Unit]
-Description=HELIX Mission Control Updater
+Description=HELIX Mission Control Update Daemon
 After=docker.service
+Requires=docker.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/update-daemon.sh
-Restart=always
+ExecStart=/bin/bash ${INSTALL_DIR}/update-daemon.sh
+Restart=on-failure
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=helix-updater
+Environment=HOME=/home/helix
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 [Install]
 WantedBy=multi-user.target
 UPDATER_EOF
-    fi
 
     systemctl daemon-reload
     systemctl enable helix-updater 2>/dev/null || true
