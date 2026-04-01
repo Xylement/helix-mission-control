@@ -255,6 +255,22 @@ export function AIModelStep({ onNext, onSkip }: AIModelStepProps) {
               </a>
             </p>
           )}
+          {provider === "gemini" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Get your free API key from{" "}
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                Google AI Studio
+              </a>
+            </p>
+          )}
+          {provider === "openrouter" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Access 300+ models from OpenAI, Anthropic, Google, Meta, and more through one API key.{" "}
+              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                Get your key
+              </a>
+            </p>
+          )}
           {provider === "kimi_code" && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
               Requires manual OpenClaw setup via SSH. Use Moonshot provider instead for automatic configuration.

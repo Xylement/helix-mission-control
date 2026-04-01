@@ -188,7 +188,7 @@
 | Workflow Engine | services/workflow_engine.py | DAG execution, step advancement, task hooks |
 | Workflow Service | services/workflow_service.py | CRUD, feature gating (Pro+) |
 | Plugin Runtime | services/plugin_runtime.py | Execute capabilities, encrypt credentials |
-| Model Providers | services/model_providers.py | 6-provider registry (moonshot, openai, anthropic, nvidia, kimi_code, custom) |
+| Model Providers | services/model_providers.py | 8-provider registry (moonshot, openai, anthropic, nvidia, gemini, openrouter, kimi_code, custom) |
 | Permissions | services/permissions.py | Board permission checks, filtering (default-closed model) |
 | Version | services/version_service.py | Read VERSION file, check api.helixnode.tech for updates, 6h cache |
 | White Label | routers/white_label.py | Branding API (6 endpoints), license-gated |
@@ -290,6 +290,23 @@ After every Claude Code session that creates/modifies files:
 ---
 
 ## 11. Recent Changes
+
+### April 1, 2026 — Add Google Gemini and OpenRouter as native AI providers
+
+Added two new AI model providers:
+- **Google Gemini** — `gemini` provider, base URL `generativelanguage.googleapis.com/v1beta/openai`, key prefix `AIza`, models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-3-flash-preview
+- **OpenRouter** — `openrouter` provider, base URL `openrouter.ai/api/v1`, key prefix `sk-or-`, models: google/gemini-2.5-flash, google/gemini-2.5-pro, anthropic/claude-sonnet-4, openai/gpt-5.4, meta-llama/llama-4-maverick, deepseek/deepseek-r1
+
+**Files changed:**
+- `backend/app/services/model_providers.py` — Added gemini and openrouter to PROVIDERS dict
+- `backend/app/services/gateway.py` — Added GEMINI_API_KEY and OPENROUTER_API_KEY to key_env_map
+- `gateway/entrypoint.sh` — Added gemini and openrouter cases to provider switch
+- `frontend/src/app/settings/models/page.tsx` — Added to all provider maps (URLs, labels, colors, suggestions, notes, key prefixes, provider list)
+- `frontend/src/components/onboarding/ai-model-step.tsx` — Added help links for gemini (AI Studio) and openrouter
+
+Both use `openai-completions` API type. Gemini keys (`AIza...`) work as Bearer tokens — no `sk-` validation anywhere in the pipeline.
+
+Applied to both production (`~/helix-mission-control/`) and staging (`~/helix-staging/`).
 
 ### March 31, 2026 — Next.js API proxy rewrites for fresh installs without reverse proxy
 

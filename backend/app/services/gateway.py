@@ -1330,6 +1330,8 @@ class OpenClawGateway:
                 "openai": "OPENAI_API_KEY",
                 "anthropic": "ANTHROPIC_API_KEY",
                 "nvidia": "NVIDIA_API_KEY",
+                "gemini": "GEMINI_API_KEY",
+                "openrouter": "OPENROUTER_API_KEY",
                 "custom": "CUSTOM_API_KEY",
             }
             api_key_env = key_env_map.get(provider, "CUSTOM_API_KEY")
