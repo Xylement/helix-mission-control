@@ -96,7 +96,25 @@ async def setup_check():
                 text("SELECT completed FROM onboarding_state LIMIT 1")
             )
             row = result.first()
-        if row and row[0]:
+        onboarding_complete = row and row[0]
+
+        # Fallback: if no onboarding_state row, check if installation is functionally complete
+        if not onboarding_complete:
+            async with async_session() as session:
+                fallback = await session.execute(text("""
+                    SELECT
+                        (SELECT COUNT(*) FROM organizations) > 0 AS has_org,
+                        (SELECT COUNT(*) FROM users WHERE role = 'admin') > 0 AS has_admin,
+                        (SELECT COUNT(*) FROM license_cache
+                         WHERE status = 'active'
+                            OR (trial = true AND trial_ends_at > NOW())
+                        ) > 0 AS has_license
+                """))
+                fb_row = fallback.fetchone()
+                if fb_row and fb_row.has_org and fb_row.has_admin and fb_row.has_license:
+                    onboarding_complete = True
+
+        if onboarding_complete:
             checks["onboarding"] = {"ok": True, "message": "Completed"}
         else:
             checks["onboarding"] = {"ok": False, "message": "Onboarding not completed"}

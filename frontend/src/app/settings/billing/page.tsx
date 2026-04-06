@@ -31,6 +31,7 @@ import {
   ExternalLink,
   ChevronDown,
   Palette,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -109,6 +110,48 @@ export default function BillingPage() {
   const tier = PLAN_TIERS[currentPlan];
   const currentPlanRank = getPlanRank(currentPlan);
 
+  const getExpiryWarning = () => {
+    const expiryDate = plan?.trial
+      ? plan.trial_ends_at
+      : plan?.current_period_end;
+
+    if (!expiryDate) return null;
+
+    const now = new Date();
+    const expiry = new Date(expiryDate);
+    const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysLeft < 0) {
+      const graceDays = (plan as Record<string, unknown>)?.grace_period_ends
+        ? Math.ceil((new Date((plan as Record<string, unknown>).grace_period_ends as string).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+      if (graceDays > 0) {
+        return { level: "red" as const, message: `Your subscription has expired. You have ${graceDays} days of grace period remaining.` };
+      }
+      return { level: "red" as const, message: "Your subscription has expired. Upgrade to restore service." };
+    }
+
+    const label = plan?.trial ? "trial" : "subscription";
+
+    if (daysLeft <= 2) {
+      return {
+        level: "red" as const,
+        message: `Your ${label} expires ${daysLeft === 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`}! Upgrade now to avoid service interruption.`,
+      };
+    }
+
+    if (daysLeft <= 7) {
+      return {
+        level: "amber" as const,
+        message: `Your ${label} expires in ${daysLeft} days — upgrade to keep your agents running.`,
+      };
+    }
+
+    return null;
+  };
+
+  const expiryWarning = getExpiryWarning();
+
   const handleCopyKey = async () => {
     if (plan?.license_key) {
       await navigator.clipboard.writeText(plan.license_key);
@@ -165,6 +208,24 @@ export default function BillingPage() {
         <h1 className="text-3xl font-bold tracking-tight">Billing & Subscription</h1>
         <p className="text-muted-foreground">Manage your plan, usage, and license</p>
       </div>
+
+      {/* Expiry Warning Banner */}
+      {expiryWarning && (
+        <div
+          className={cn(
+            "flex items-center gap-3 rounded-lg border px-4 py-3 text-sm",
+            expiryWarning.level === "red"
+              ? "bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400"
+              : "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400"
+          )}
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{expiryWarning.message}</span>
+          <a href="#plans" className="ml-auto shrink-0 font-medium underline underline-offset-2 hover:opacity-80">
+            View Plans
+          </a>
+        </div>
+      )}
 
       {/* A. Current Plan Card */}
       <Card>
