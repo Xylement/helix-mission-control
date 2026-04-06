@@ -122,8 +122,8 @@ export default function BillingPage() {
     const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysLeft < 0) {
-      const graceDays = (plan as Record<string, unknown>)?.grace_period_ends
-        ? Math.ceil((new Date((plan as Record<string, unknown>).grace_period_ends as string).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      const graceDays = plan?.grace_period_ends
+        ? Math.ceil((new Date(plan.grace_period_ends).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
         : 0;
       if (graceDays > 0) {
         return { level: "red" as const, message: `Your subscription has expired. You have ${graceDays} days of grace period remaining.` };
