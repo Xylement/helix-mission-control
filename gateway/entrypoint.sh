@@ -81,11 +81,16 @@ if [ "$USE_AUTH_PROFILE" = "false" ] && [ -z "${MODEL_API_KEY}" ]; then
         echo "============================================"
         # Create minimal config so gateway starts and accepts connections
         mkdir -p "$(dirname "$CONFIG_FILE")"
-        cat > "$CONFIG_FILE" << 'MINIMAL_EOF'
+        cat > "$CONFIG_FILE" << MINIMAL_EOF
 {
-    "server": {
-        "host": "0.0.0.0",
-        "port": 18789
+    "gateway": {
+        "mode": "local",
+        "port": ${GATEWAY_PORT:-18789},
+        "bind": "lan",
+        "auth": {
+            "mode": "token",
+            "token": "${GATEWAY_TOKEN}"
+        }
     }
 }
 MINIMAL_EOF

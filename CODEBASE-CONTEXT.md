@@ -1351,3 +1351,12 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `backend/app/routers/white_label.py` — New `POST /api/settings/white-label/reset` endpoint (admin, white_label feature required, deletes DB row, logs activity, returns BrandingPublic defaults)
 - `frontend/src/app/settings/white-label/page.tsx` — "Reset to Defaults" button (red outline, RefreshCcw icon) at top-right, confirmation dialog, calls reset endpoint then reloads page
 - `frontend/src/lib/api.ts` — Added `resetWhiteLabelSettings()` method
+
+### April 6, 2026 — Gateway Entrypoint Config Fix
+
+**Problem:** `gateway/entrypoint.sh` generated a minimal `openclaw.json` with a `"server"` key when no model key was configured. OpenClaw doesn't recognize `"server"` — only `gateway`, `env`, `models`, `agents`, `tools`, `channels` are valid top-level keys — causing the gateway to crash on fresh installs.
+
+**Fix (`gateway/entrypoint.sh`):**
+- Replaced invalid `"server"` block with a proper `"gateway"` section containing `mode`, `port`, `bind`, and `auth` fields
+- Minimal config now matches the structure used by the full config generation path
+- Gateway starts correctly in waiting mode on fresh installs until a model key is configured via onboarding
