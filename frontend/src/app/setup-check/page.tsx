@@ -11,7 +11,7 @@ const CHECK_LABELS: Record<string, { label: string; fixUrl?: string; fixLabel?: 
   redis: { label: "Redis" },
   gateway: { label: "AI Gateway", fixUrl: "/settings/models", fixLabel: "Configure AI Model" },
   model_configured: { label: "AI Model", fixUrl: "/settings/models", fixLabel: "Configure AI Model" },
-  license: { label: "License", fixUrl: "/settings/license", fixLabel: "Activate License" },
+  license: { label: "License", fixUrl: "/settings/billing", fixLabel: "Activate License" },
   admin_exists: { label: "Admin Account" },
   onboarding: { label: "Onboarding", fixUrl: "/onboarding", fixLabel: "Start Onboarding" },
 };

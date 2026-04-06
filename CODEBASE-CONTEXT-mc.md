@@ -291,22 +291,6 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
-### April 6, 2026 — Pre-v1.4.0 Fixes
-
-**Fix 1 — Onboarding health check fallback** (`backend/app/routers/health.py`):
-- `/api/health/setup` now considers onboarding complete if org + admin + active license exist, regardless of `onboarding_state` table
-- Fixes false "onboarding not completed" for pre-existing installations
-
-**Fix 2 — Billing expiry warning** (`frontend/src/app/settings/billing/page.tsx`):
-- Amber banner when trial/subscription expires within 7 days
-- Red banner when expires within 2 days or already expired
-- Grace period countdown when expired
-
-**Fix 3 — Docs redeployed** (helixnode-docs):
-- Verified docs already deployed with setup-env, setup-check, troubleshooting content
-
-**Fix 4 — install.sh verified** — already synced to web server
-
 ### April 6, 2026 — v1.3.2 Installation Reliability Overhaul
 
 **Problem:** Fresh installs (both script-based and manual) were broken — frontend couldn't reach backend, gateway never started without model key, missing env vars caused warnings.
