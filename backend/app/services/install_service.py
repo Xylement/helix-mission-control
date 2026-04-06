@@ -61,6 +61,93 @@ def _normalize_agent_manifest(manifest: dict) -> dict:
     return manifest
 
 
+def _normalize_skill_manifest(manifest: dict) -> dict:
+    """Bridge flat marketplace skill manifests to the nested skill_config format.
+
+    API returns: {type, title, content, activation_mode}
+    Install expects: skill_config.{name, slug, description, content, category, tags, activation}
+    """
+    if manifest.get("skill_config"):
+        return manifest
+
+    manifest = dict(manifest)
+
+    name = manifest.get("name") or manifest.get("title") or manifest.get("slug", "Skill")
+
+    manifest["skill_config"] = {
+        "name": name,
+        "slug": manifest.get("slug", ""),
+        "description": manifest.get("description", ""),
+        "category": manifest.get("category", ""),
+        "tags": manifest.get("tags", []),
+        "content": manifest.get("content", ""),
+        "activation": {
+            "mode": manifest.get("activation_mode", "always"),
+            "boards": manifest.get("activation_boards", []),
+            "tags": manifest.get("activation_tags", []),
+        },
+    }
+
+    if not manifest.get("name"):
+        manifest["name"] = name
+
+    return manifest
+
+
+def _normalize_workflow_manifest(manifest: dict) -> dict:
+    """Bridge flat marketplace workflow manifests to the nested workflow_config format.
+
+    API returns: {name, type, steps: [{name, action, step_id, depends_on, agent_template, ...}]}
+    Install expects: workflow_config.{trigger, steps, required_agents}
+    """
+    if manifest.get("workflow_config"):
+        return manifest
+
+    manifest = dict(manifest)
+
+    steps = manifest.get("steps", [])
+
+    # Derive required_agents from step agent_template references
+    required_agents = []
+    for step in steps:
+        tmpl = step.get("agent_template")
+        if tmpl and tmpl not in required_agents:
+            required_agents.append(tmpl)
+
+    manifest["workflow_config"] = {
+        "trigger": manifest.get("trigger", "manual"),
+        "steps": steps,
+        "required_agents": required_agents,
+    }
+
+    if not manifest.get("name"):
+        manifest["name"] = manifest.get("slug", "Workflow")
+
+    return manifest
+
+
+def _normalize_plugin_manifest(manifest: dict) -> dict:
+    """Bridge flat marketplace plugin manifests to the format plugin_runtime expects.
+
+    API returns: {name, type, auth_config, plugin_type, capabilities, settings_fields}
+    Runtime reads: manifest.auth, manifest.setting_definitions, manifest.capabilities
+    """
+    manifest = dict(manifest)
+
+    # auth_config → auth (runtime reads manifest.get("auth", {}))
+    if "auth_config" in manifest and "auth" not in manifest:
+        manifest["auth"] = manifest["auth_config"]
+
+    # settings_fields → setting_definitions (runtime reads manifest.get("setting_definitions", []))
+    if "settings_fields" in manifest and "setting_definitions" not in manifest:
+        manifest["setting_definitions"] = manifest["settings_fields"]
+
+    if not manifest.get("name"):
+        manifest["name"] = manifest.get("slug", "Plugin")
+
+    return manifest
+
+
 class InstallService:
     def __init__(
         self,
@@ -317,6 +404,7 @@ class InstallService:
         if manifest.get("type") != "skill":
             raise ValueError(f"Template {template_slug} is not a skill template")
 
+        manifest = _normalize_skill_manifest(manifest)
         skill_config = manifest.get("skill_config", {})
         requirements = manifest.get("requirements", {})
 

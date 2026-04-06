@@ -26,10 +26,13 @@ class WorkflowInstallService:
     async def install(
         self, org_id: int, user_id: int, template_slug: str, agent_mapping: dict | None = None
     ) -> dict:
+        from app.services.install_service import _normalize_workflow_manifest
+
         manifest = await self.marketplace.get_manifest(template_slug)
         if manifest.get("type") != "workflow":
             raise ValueError("Not a workflow template")
 
+        manifest = _normalize_workflow_manifest(manifest)
         wf_config = manifest.get("workflow_config", {})
         requirements = manifest.get("requirements", {})
 

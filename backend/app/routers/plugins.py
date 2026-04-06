@@ -64,6 +64,9 @@ async def install_plugin(
     except Exception:
         raise HTTPException(status_code=404, detail="Plugin template not found in marketplace")
 
+    from app.services.install_service import _normalize_plugin_manifest
+    manifest = _normalize_plugin_manifest(manifest)
+
     plugin = await runtime.install_plugin(org_id, manifest, body.template_slug, user.id)
 
     # Record in marketplace installed templates

@@ -1440,3 +1440,29 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Maps: `role` → `agent_config.name` + `agent_config.role_title`, `system_prompt` → `agent_config.system_prompt`, `department` → `agent_config.department_suggestion`, `board` → `agent_config.board_suggestion`, `skills` → `agent_config.skills`, `soul_md` → `agent_config.memory_config.soul_md_template`
 - Called in both `pre_install_check()` and `install_agent_template()` after fetching the manifest
 - No-op when `agent_config` already exists (locally-exported templates still work)
+
+### April 6, 2026 — Marketplace Skill, Workflow, Plugin Manifest Normalization
+
+**Problem:** Same flat-vs-nested manifest mismatch as the agent fix above, but affecting skills, workflows, and plugins. Marketplace API returns flat manifests; install services expected nested wrapper objects (`skill_config`, `workflow_config`, `auth`/`setting_definitions`).
+
+**Skill manifest mismatch:**
+- API returns: `{type, title, content, activation_mode}` — no `name`, no `skill_config` wrapper
+- Install expected: `skill_config.{name, slug, description, content, category, tags, activation}`
+- Result: null skill name, empty content
+
+**Workflow manifest mismatch:**
+- API returns: `{name, type, steps: [...]}` — no `workflow_config` wrapper, no `required_agents`
+- Install expected: `workflow_config.{trigger, steps, required_agents}`
+- Result: no steps created, no agents mapped
+
+**Plugin manifest mismatch:**
+- API returns: `{name, type, auth_config, plugin_type, capabilities, settings_fields}`
+- Runtime expected: `manifest.auth`, `manifest.setting_definitions`
+- Result: auth headers not built, settings validation skipped
+
+**Fix:**
+- `_normalize_skill_manifest()` in `install_service.py` — bridges `title`→`name`, flat fields→`skill_config`
+- `_normalize_workflow_manifest()` in `install_service.py` — wraps flat `steps`→`workflow_config`, derives `required_agents` from step `agent_template` refs
+- `_normalize_plugin_manifest()` in `install_service.py` — maps `auth_config`→`auth`, `settings_fields`→`setting_definitions`
+- Called in `install_skill_template()`, `WorkflowInstallService.install()`, and `plugins.py` install endpoint
+- All normalizers are no-ops when the nested format already exists
