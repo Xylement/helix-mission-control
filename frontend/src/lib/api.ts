@@ -6,7 +6,7 @@ const getApiBase = (): string => {
 
   // 2. Server-side: use internal Docker network URL
   if (typeof window === 'undefined') {
-    return 'http://backend:8000';
+    return '';
   }
 
   // 3. Client-side: use relative path (works behind Nginx reverse proxy)
