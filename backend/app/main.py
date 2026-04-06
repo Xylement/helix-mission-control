@@ -33,6 +33,7 @@ from app.routers import version as version_router
 from app.routers import white_label as white_label_router
 from app.routers import traces as traces_router
 from app.routers import delegations as delegations_router
+from app.routers import health as health_router
 from app.seed import seed_all, ensure_helix_user
 from app.services.gateway import gateway
 from app.services.event_bus import subscribe_events
@@ -490,6 +491,7 @@ app.include_router(goals_router.router, prefix="/api")
 app.include_router(goals_router.task_goal_router, prefix="/api")
 app.include_router(traces_router.router, prefix="/api")
 app.include_router(delegations_router.router, prefix="/api")
+app.include_router(health_router.router)
 app.include_router(websocket_router.router)
 
 

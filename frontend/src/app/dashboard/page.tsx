@@ -301,6 +301,11 @@ export default function DashboardPage() {
   const [createDueDate, setCreateDueDate] = useState("");
   const [creating, setCreating] = useState(false);
   const [missions, setMissions] = useState<GoalTree[]>([]);
+  const [setupIncomplete, setSetupIncomplete] = useState(false);
+
+  useEffect(() => {
+    api.getSetupCheck().then(r => setSetupIncomplete(!r.ready)).catch(() => {});
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -435,6 +440,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-in-page">
+      {/* Setup banner */}
+      {setupIncomplete && (
+        <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-center justify-between">
+          <span className="text-yellow-300 text-sm">Setup incomplete — some services need configuration.</span>
+          <Link href="/setup-check" className="text-yellow-300 text-sm underline hover:text-yellow-200">View Setup Checklist</Link>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

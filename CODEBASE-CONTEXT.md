@@ -1,7 +1,7 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
 ## Last updated: March 29, 2026 (v1.2.0 release)
-## Last updated: March 31, 2026 (Next.js API proxy rewrites for fresh installs)
+## Last updated: April 6, 2026 (v1.3.2 installation reliability)
 
 ---
 
@@ -290,6 +290,55 @@ After every Claude Code session that creates/modifies files:
 ---
 
 ## 11. Recent Changes
+
+### April 6, 2026 — v1.3.2 Installation Reliability Overhaul
+
+**Problem:** Fresh installs (both script-based and manual) were broken — frontend couldn't reach backend, gateway never started without model key, missing env vars caused warnings.
+
+**Fix 1 — Smart API base detection** (`frontend/src/lib/api.ts`):
+- `getApiBase()` rewritten: port 3000 → auto-redirect to port 8000 on same host; port 80/443 → relative path (reverse proxy); SSR → `http://backend:8000`
+- Handles all scenarios: behind Nginx/Caddy, direct Docker access, custom domains
+
+**Fix 2 — Dockerfile cleanup** (`frontend/Dockerfile`):
+- Removed hardcoded `ENV NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` that overwrote build arg
+
+**Fix 3 — next.config.mjs simplified** (`frontend/next.config.mjs`):
+- Removed `rewrites()` proxy rules — no longer needed with smart `getApiBase()`
+
+**Fix 4 — docker-compose.yml defaults** (`docker-compose.yml`):
+- Removed `NEXT_PUBLIC_API_URL`, `BACKEND_URL` from frontend env
+- Added `GATEWAY_TOKEN` default for fresh installs
+- Changed `GENERATE_CONFIG` default to `true` (production overrides via `.env`)
+- Gateway volumes use `${HOME:-.}/.openclaw` for portability
+
+**Fix 5 — Gateway starts without model key** (`gateway/entrypoint.sh`):
+- Instead of polling forever, creates minimal config and starts OpenClaw in waiting mode
+- Accepts connections but can't process AI until model configured
+
+**Fix 6 — Setup health check endpoint** (`backend/app/routers/health.py`):
+- `GET /api/health/setup` — public (no auth) diagnostic endpoint
+- Checks: database, redis, gateway, model_configured, license, admin_exists, onboarding
+- Returns ready status and next_step recommendation
+
+**Fix 7 — Setup check page** (`frontend/src/app/setup-check/page.tsx`):
+- Public diagnostic page at `/setup-check` showing all service statuses
+- Fix links for each failing check
+- Dashboard banner when setup is incomplete
+
+**Fix 8 — Complete .env.example** (`.env.example`):
+- Rewritten with working defaults (Gemini free tier as default provider)
+- All vars documented, no legacy vars
+
+**Fix 9 — setup-env.sh script** (`scripts/setup-env.sh`):
+- Auto-generates `.env` from `.env.example` with random secrets
+
+**Fix 10 — install.sh updated** (`install.sh`):
+- Removed non-existent Alembic migration call
+- Updated frontend env vars (removed legacy `NEXT_PUBLIC_API_URL`)
+- Version bumped to 1.3.2
+
+**Fix 11 — Manual install docs updated** (`helixnode-docs/getting-started/installation.md`):
+- Step-by-step with `setup-env.sh`, optional model config, setup-check verification
 
 ### April 1, 2026 — Add Google Gemini and OpenRouter as native AI providers
 

@@ -68,7 +68,7 @@ if [ "$USE_AUTH_PROFILE" = "false" ] && [ -z "${MODEL_API_KEY}" ]; then
     fi
 fi
 
-# If still no API key and no auth profile, poll config file until backend writes one
+# If still no API key and no auth profile, create minimal config and start anyway
 if [ "$USE_AUTH_PROFILE" = "false" ] && [ -z "${MODEL_API_KEY}" ]; then
     if config_has_key; then
         echo "Found API key in config file, proceeding..."
@@ -76,22 +76,20 @@ if [ "$USE_AUTH_PROFILE" = "false" ] && [ -z "${MODEL_API_KEY}" ]; then
     else
         echo "============================================"
         echo "  No AI model key configured."
-        echo "  Gateway will start after onboarding."
-        echo "  Polling config every 5s..."
+        echo "  Gateway will start in waiting mode."
+        echo "  Configure a model in Settings > AI Models."
         echo "============================================"
-        while true; do
-            sleep 5
-            if config_has_key; then
-                echo "API key detected in config file! Starting gateway..."
-                GENERATE_CONFIG="false"
-                break
-            fi
-            if has_kimi_auth_profile; then
-                echo "Kimi auth profile detected! Starting gateway..."
-                USE_AUTH_PROFILE="true"
-                break
-            fi
-        done
+        # Create minimal config so gateway starts and accepts connections
+        mkdir -p "$(dirname "$CONFIG_FILE")"
+        cat > "$CONFIG_FILE" << 'MINIMAL_EOF'
+{
+    "server": {
+        "host": "0.0.0.0",
+        "port": 18789
+    }
+}
+MINIMAL_EOF
+        GENERATE_CONFIG="false"
     fi
 fi
 

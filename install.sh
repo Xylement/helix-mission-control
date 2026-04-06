@@ -44,7 +44,7 @@ if [[ "$OSTYPE" == "darwin"* ]] && [ "$(id -u)" -eq 0 ]; then
 fi
 
 # === Configuration ===
-HELIX_VERSION="1.1.0"
+HELIX_VERSION="1.3.2"
 HELIX_REPO="https://github.com/Xylement/helix-mission-control.git"
 HELIX_BRANCH="main"
 INSTALL_DIR="/home/helix/helix-mission-control"
@@ -457,7 +457,7 @@ JWT_SECRET=${JWT_SECRET}
 SERVICE_TOKEN=${SERVICE_TOKEN}
 
 # === Frontend ===
-NEXT_PUBLIC_API_URL=auto
+NEXT_PUBLIC_API_BASE_URL=
 
 # === CORS ===
 CORS_ORIGINS=http://localhost:3000
@@ -466,10 +466,6 @@ CORS_ORIGINS=http://localhost:3000
 LOG_LEVEL=info
 MAX_AGENTS=50
 GENERATE_CONFIG=true
-
-# === Legacy ===
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-CLERK_SECRET_KEY=
 ENVFILE
 }
 
@@ -582,10 +578,6 @@ start_helix_linux() {
         error "  docker compose logs backend --tail=50"
         exit 1
     fi
-
-    # Run database migrations
-    log "Running database migrations..."
-    sudo -u "$HELIX_USER" docker compose exec -T backend alembic upgrade head || true
 
     # Fix workspace ownership — backend creates dirs as root, gateway runs as UID 1001
     log "Fixing openclaw workspace permissions..."
