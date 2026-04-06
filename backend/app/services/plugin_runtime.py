@@ -103,6 +103,11 @@ class PluginRuntime:
         slug = manifest.get("slug", template_slug or "unknown")
         name = manifest.get("name", slug)
 
+        # Ensure every capability has an id
+        for i, cap in enumerate(manifest.get("capabilities", [])):
+            if not cap.get("id"):
+                cap["id"] = cap.get("name", "").lower().replace(" ", "_") or f"cap_{i}"
+
         # Check if previously installed (inactive) — reactivate
         stmt = select(InstalledPlugin).where(
             InstalledPlugin.org_id == org_id,
@@ -333,14 +338,14 @@ class PluginRuntime:
                 continue
             manifest_caps = plugin.manifest.get("capabilities", [])
             allowed = ap.capabilities or []
-            for mc in manifest_caps:
+            for i, mc in enumerate(manifest_caps):
                 if allowed and mc.get("id") not in allowed:
                     continue
                 caps.append({
                     "plugin_id": plugin.id,
                     "plugin_name": plugin.name,
                     "plugin_emoji": plugin.emoji,
-                    "capability_id": mc.get("id"),
+                    "capability_id": mc.get("id") or mc.get("name", "").lower().replace(" ", "_") or f"cap_{i}",
                     "capability_name": mc.get("name"),
                     "description": mc.get("description"),
                     "method": mc.get("method"),
@@ -407,13 +412,13 @@ class PluginRuntime:
                 "capabilities": ap.capabilities,
                 "available_capabilities": [
                     {
-                        "id": c.get("id"),
+                        "id": c.get("id") or c.get("name", "").lower().replace(" ", "_") or f"cap_{i}",
                         "name": c.get("name"),
                         "description": c.get("description"),
                         "method": c.get("method"),
                         "parameters": c.get("parameters"),
                     }
-                    for c in manifest_caps
+                    for i, c in enumerate(manifest_caps)
                 ],
             })
         return items
@@ -563,13 +568,13 @@ class PluginRuntime:
             "last_used_at": plugin.last_used_at,
             "capabilities": [
                 {
-                    "id": c.get("id"),
+                    "id": c.get("id") or c.get("name", "").lower().replace(" ", "_") or f"cap_{i}",
                     "name": c.get("name"),
                     "description": c.get("description"),
                     "method": c.get("method"),
                     "parameters": c.get("parameters"),
                 }
-                for c in capabilities
+                for i, c in enumerate(capabilities)
             ],
             "setting_definitions": [
                 {

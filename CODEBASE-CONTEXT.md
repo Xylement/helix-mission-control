@@ -1489,3 +1489,11 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Added `isPlugin` and `isWorkflow` flags alongside `isAgent`.
 - Icon: `Plug` for plugins, `Workflow` for workflows (imported from lucide-react).
 - Description and "This will create:" label now show the correct type (Plugin/Workflow/Skill).
+
+### Plugin capability IDs auto-generated when missing from manifest
+
+**Problem:** `GET /api/plugins` returned 500 `ResponseValidationError` because `PluginCapabilityResponse.id` is a required `str` field, but marketplace manifests don't always include capability IDs. `c.get("id")` returned `None`, failing Pydantic validation.
+
+**Fix (services/plugin_runtime.py):**
+- `install_plugin()` now normalizes capabilities at install time — generates `id` from `name.lower().replace(" ", "_")` or falls back to `cap_{index}`.
+- `_plugin_to_response()`, `get_agent_capabilities()`, and `agent_plugins_for_agent()` also apply the same fallback when building response dicts, so pre-existing plugins installed before this fix are also handled.
