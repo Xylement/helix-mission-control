@@ -1466,3 +1466,9 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `_normalize_plugin_manifest()` in `install_service.py` — maps `auth_config`→`auth`, `settings_fields`→`setting_definitions`
 - Called in `install_skill_template()`, `WorkflowInstallService.install()`, and `plugins.py` install endpoint
 - All normalizers are no-ops when the nested format already exists
+
+### April 6, 2026 — Marketplace Install Tracking License Key Fix
+
+**Problem:** `marketplace_service.py` imported `LICENSE_KEY` as a module-level constant from `license_service.py` (`os.getenv("LICENSE_KEY", "")`). On fresh installs without the env var set, every `X-License-Key` header sent to the registry was empty — install/uninstall tracking, reviews, submissions, and community profile calls all silently failed auth on the license server.
+
+**Fix:** `MarketplaceService` now uses an async `_auth_headers()` helper that calls `self.license_service._get_effective_license_key()` — checks env var first, falls back to `license_cache.license_key_prefix` in DB (populated during onboarding/trial activation). All 12 authenticated registry calls use this instead of the static constant.

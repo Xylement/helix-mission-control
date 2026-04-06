@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.installed_template import InstalledTemplate
-from app.services.license_service import LicenseService, LICENSE_KEY
+from app.services.license_service import LicenseService
 
 logger = logging.getLogger("helix.marketplace")
 
@@ -25,6 +25,11 @@ class MarketplaceService:
             timeout=15.0,
             headers={"User-Agent": "HELIX-Instance/1.0"},
         )
+
+    async def _auth_headers(self) -> dict:
+        """Get auth headers using the effective license key (env var or DB cache)."""
+        key = await self.license_service._get_effective_license_key()
+        return {"X-License-Key": key}
 
     # ─── Browse (proxy to registry) ───
 
@@ -77,7 +82,7 @@ class MarketplaceService:
         resp = await self._http.post(
             f"/v1/marketplace/templates/{slug}/reviews",
             json={"rating": rating, "title": title, "body": body},
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -85,7 +90,7 @@ class MarketplaceService:
     async def upvote_review(self, review_id: str) -> dict:
         resp = await self._http.post(
             f"/v1/marketplace/reviews/{review_id}/helpful",
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -94,7 +99,7 @@ class MarketplaceService:
         resp = await self._http.post(
             f"/v1/marketplace/reviews/{review_id}/flag",
             json={"reason": reason},
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -103,7 +108,7 @@ class MarketplaceService:
         resp = await self._http.post(
             f"/v1/marketplace/reviews/{review_id}/respond",
             json={"body": body},
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -136,7 +141,7 @@ class MarketplaceService:
     async def get_own_profile(self) -> dict:
         resp = await self._http.get(
             "/v1/community/profile",
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -145,7 +150,7 @@ class MarketplaceService:
         resp = await self._http.post(
             "/v1/community/profile",
             json=data,
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -156,7 +161,7 @@ class MarketplaceService:
         resp = await self._http.post(
             "/v1/marketplace/submissions",
             json=data,
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -165,7 +170,7 @@ class MarketplaceService:
         resp = await self._http.get(
             "/v1/marketplace/my-submissions",
             params={"page": page, "per_page": page_size},
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -173,7 +178,7 @@ class MarketplaceService:
     async def get_submission_status(self, submission_id: str) -> dict:
         resp = await self._http.get(
             f"/v1/marketplace/submissions/{submission_id}/status",
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -182,7 +187,7 @@ class MarketplaceService:
         resp = await self._http.patch(
             f"/v1/marketplace/submissions/{submission_id}",
             json=data,
-            headers={"X-License-Key": LICENSE_KEY},
+            headers=await self._auth_headers(),
         )
         resp.raise_for_status()
         return resp.json()
@@ -277,7 +282,7 @@ class MarketplaceService:
         try:
             await self._http.post(
                 f"/v1/marketplace/templates/{template_slug}/install",
-                headers={"X-License-Key": LICENSE_KEY},
+                headers=await self._auth_headers(),
                 json={"helix_version": settings.HELIX_VERSION},
             )
         except Exception:
@@ -287,7 +292,7 @@ class MarketplaceService:
         try:
             await self._http.post(
                 f"/v1/marketplace/templates/{template_slug}/uninstall",
-                headers={"X-License-Key": LICENSE_KEY},
+                headers=await self._auth_headers(),
             )
         except Exception:
             pass
