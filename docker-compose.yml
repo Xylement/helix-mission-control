@@ -95,7 +95,7 @@ services:
       - ENVIRONMENT=production
       - OPENCLAW_GATEWAY_URL=${GATEWAY_URL:-ws://gateway:18789}
       - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN:-default-gateway-token}
-      - OPENCLAW_CONFIG_PATH=${HOME:-.}/.openclaw/openclaw.json
+      - OPENCLAW_CONFIG_PATH=/home/helix/.openclaw/openclaw.json
       - ENV_FILE_PATH=${PWD:-.}/.env
       - COMPOSE_PROJECT_DIR=${PWD:-.}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
