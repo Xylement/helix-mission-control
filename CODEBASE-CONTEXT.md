@@ -1426,3 +1426,17 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **Fix (`backend/app/services/gateway.py`):**
 - Changed `"apiKey": f"${{{api_key_env}}}"` to `"apiKey": api_key` — writes the real decrypted key directly
 - The `env` section still gets the key for backward compatibility with entrypoint-generated configs
+
+### April 6, 2026 — Marketplace Agent Install Manifest Format Mismatch
+
+**Problem:** Installing an agent template from the marketplace (api.helixnode.tech) failed with `null value in column "name" of relation "agents" violates not-null constraint`. The `role_title` and `system_prompt` columns were also empty strings. Root cause: the install service expected the nested `agent_config` format produced by the local export service, but the marketplace API returns a flat manifest structure.
+
+**Manifest format difference:**
+- Export/local format: `{ "name": "...", "agent_config": { "name": "...", "role_title": "...", "system_prompt": "...", ... } }`
+- Marketplace API format: `{ "type": "agent_template", "role": "Creative Designer", "system_prompt": "...", "department": "Creative", "board": "Design Studio", "skills": [...], "soul_md": "..." }` — no `agent_config` wrapper, no `name` field (use `role` instead)
+
+**Fix (`backend/app/services/install_service.py`):**
+- Added `_normalize_agent_manifest()` function that bridges flat marketplace manifests to the nested `agent_config` format
+- Maps: `role` → `agent_config.name` + `agent_config.role_title`, `system_prompt` → `agent_config.system_prompt`, `department` → `agent_config.department_suggestion`, `board` → `agent_config.board_suggestion`, `skills` → `agent_config.skills`, `soul_md` → `agent_config.memory_config.soul_md_template`
+- Called in both `pre_install_check()` and `install_agent_template()` after fetching the manifest
+- No-op when `agent_config` already exists (locally-exported templates still work)

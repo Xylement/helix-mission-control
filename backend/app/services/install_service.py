@@ -22,6 +22,45 @@ PLAN_ORDER = {"trial": 0, "starter": 1, "pro": 2, "scale": 3, "enterprise": 4, "
 OPENCLAW_WORKSPACE_BASE = "/home/helix/.openclaw/workspaces"
 
 
+def _normalize_agent_manifest(manifest: dict) -> dict:
+    """Bridge flat marketplace API manifests to the nested agent_config format.
+
+    The marketplace API (api.helixnode.tech) returns a flat structure with keys
+    like 'role', 'system_prompt', 'department', 'board', 'skills', 'soul_md'.
+    The install logic expects a nested 'agent_config' dict matching the export
+    format.  If 'agent_config' already exists (locally-exported template), this
+    is a no-op.
+    """
+    if manifest.get("agent_config"):
+        return manifest
+
+    manifest = dict(manifest)  # shallow copy to avoid mutating the original
+
+    # Derive the display name: prefer explicit 'name', fall back to 'role'
+    name = manifest.get("name") or manifest.get("role") or manifest.get("slug", "Agent")
+
+    manifest["agent_config"] = {
+        "name": name,
+        "role_title": manifest.get("role", ""),
+        "system_prompt": manifest.get("system_prompt", ""),
+        "department_suggestion": manifest.get("department", "General"),
+        "board_suggestion": manifest.get("board", "General"),
+        "execution_mode": manifest.get("execution_mode", "auto"),
+        "skills": manifest.get("skills", []),
+        "memory_config": {
+            "learning_loop": True,
+            "memory_flush": True,
+            "soul_md_template": manifest.get("soul_md") or None,
+        },
+    }
+
+    # Ensure top-level 'name' is set (used by record_install and pre_install_check)
+    if not manifest.get("name"):
+        manifest["name"] = name
+
+    return manifest
+
+
 class InstallService:
     def __init__(
         self,
@@ -42,6 +81,8 @@ class InstallService:
     ) -> dict:
         manifest = await self.marketplace.get_manifest(template_slug)
         template_type = manifest.get("type", "")
+        if template_type == "agent_template":
+            manifest = _normalize_agent_manifest(manifest)
         license_info = await self.license_service.get_plan()
         plan = license_info.get("plan", "trial")
 
@@ -153,6 +194,7 @@ class InstallService:
         if manifest.get("type") != "agent_template":
             raise ValueError(f"Template {template_slug} is not an agent template")
 
+        manifest = _normalize_agent_manifest(manifest)
         agent_config = manifest.get("agent_config", {})
         requirements = manifest.get("requirements", {})
 
