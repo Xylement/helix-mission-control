@@ -89,9 +89,9 @@ services:
       - ENVIRONMENT=production
       - OPENCLAW_GATEWAY_URL=${GATEWAY_URL:-ws://gateway:18789}
       - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN:-default-gateway-token}
-      - OPENCLAW_CONFIG_PATH=/home/helix/.openclaw/openclaw.json
-      - ENV_FILE_PATH=/home/helix/helix-mission-control/.env
-      - COMPOSE_PROJECT_DIR=/home/helix/helix-mission-control
+      - OPENCLAW_CONFIG_PATH=${HOME:-.}/.openclaw/openclaw.json
+      - ENV_FILE_PATH=${PWD:-.}/.env
+      - COMPOSE_PROJECT_DIR=${PWD:-.}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - HELIX_SERVICE_TOKEN=${SERVICE_TOKEN}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
@@ -103,9 +103,9 @@ services:
       - LICENSE_SERVER_URL=${LICENSE_SERVER_URL:-https://api.helixnode.tech}
       - LICENSE_KEY=${LICENSE_KEY:-}
     volumes:
-      - /home/helix/.openclaw/workspaces:/home/helix/.openclaw/workspaces
-      - /home/helix/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:rw
-      - /home/helix/.openclaw/identity:/home/helix/.openclaw/identity:ro
+      - ${HOME:-.}/.openclaw/workspaces:/home/helix/.openclaw/workspaces
+      - ${HOME:-.}/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:rw
+      - ${HOME:-.}/.openclaw/identity:/home/helix/.openclaw/identity:ro
       - uploads-data:/data/uploads
       - ./backups:/home/helix/backups
       - ./VERSION:/app/VERSION:ro
