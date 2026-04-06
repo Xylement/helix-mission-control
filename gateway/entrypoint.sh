@@ -146,8 +146,28 @@ case "${MODEL_PROVIDER:-moonshot}" in
     ;;
 esac
 
-# Only generate config if explicitly requested (not when host config is mounted)
-if [ ! -f "$CONFIG_FILE" ] || [ "${GENERATE_CONFIG:-true}" = "true" ]; then
+# Check if openclaw.json already has valid model providers (written by backend sync).
+# If so, preserve it — only generate a fresh config on first run or when file is
+# empty/minimal (no providers). This prevents the entrypoint from overwriting
+# backend-synced model config (e.g. gemini) with default moonshot on every restart.
+config_has_model_providers() {
+    [ -f "$CONFIG_FILE" ] && node -e "
+        const c = require('$CONFIG_FILE');
+        const providers = (c.models || {}).providers || {};
+        const hasProviders = Object.keys(providers).length > 0;
+        process.exit(hasProviders ? 0 : 1);
+    " 2>/dev/null
+}
+
+# Only generate config on first run (file missing) or when no model providers exist.
+# Skip if config already has model providers (backend sync owns the model config).
+SHOULD_GENERATE="true"
+if [ -f "$CONFIG_FILE" ] && config_has_model_providers; then
+    echo "Existing openclaw.json has model providers — preserving config."
+    SHOULD_GENERATE="false"
+fi
+
+if [ "$SHOULD_GENERATE" = "true" ] && { [ ! -f "$CONFIG_FILE" ] || [ "${GENERATE_CONFIG:-true}" = "true" ]; }; then
 
   # Build telegram channel config if token is set
   TELEGRAM_CONFIG=""

@@ -1392,6 +1392,16 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Hardcoded to `/home/helix/.openclaw/openclaw.json` — the container path, not the host path
 - Volume mount `${HOME:-.}/.openclaw:/home/helix/.openclaw:rw` maps host dir to this path regardless of host `HOME`
 
+### April 6, 2026 — Gateway Entrypoint Preserves Existing Model Config
+
+**Problem:** Race condition — backend `sync_model_config_from_db()` writes correct model config (e.g. gemini) to `openclaw.json`, but when the gateway container restarts, `entrypoint.sh` overwrites it with moonshot defaults regenerated from env vars. The `GENERATE_CONFIG` variable defaulted to `true`, so config was always regenerated on every restart.
+
+**Fix (`gateway/entrypoint.sh`):**
+- Added `config_has_model_providers()` check before the config generation block
+- If `openclaw.json` already exists and has `models.providers` with at least one provider, the entrypoint logs "preserving config" and skips generation entirely
+- Config is only generated on first run (file missing) or when the file has no model providers (empty/minimal config)
+- Backend sync remains the authoritative source for model config after initial setup
+
 ### April 6, 2026 — Write Actual API Key in Providers Config
 
 **Problem:** `sync_model_config_from_db()` wrote `"apiKey": "${GEMINI_API_KEY}"` (env var placeholder) in the `models.providers` section of `openclaw.json`. OpenClaw needs the actual decrypted key there, not an env var reference. The key was correctly placed in the `env` section but the providers section referenced it indirectly.
