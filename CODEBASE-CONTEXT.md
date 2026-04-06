@@ -1,7 +1,7 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
 ## Last updated: March 29, 2026 (v1.2.0 release)
-## Last updated: April 6, 2026 (v1.3.2 installation reliability)
+## Last updated: April 6, 2026 (v1.3.2 installation reliability, billing activation fix)
 
 ---
 
@@ -267,6 +267,7 @@
 - ~~Activity feed lacks department colors~~ — **FIXED** (colorized by department and action type)
 - Frontend health check occasionally shows unhealthy (cosmetic)
 - Billing history is placeholder (links to Stripe Portal)
+- ~~No way to activate license key post-onboarding~~ — **FIXED** (activation card on billing page)
 - ~~Gateway config sync from DB to container needs restart~~ — **FIXED** (backend syncs model config from DB to openclaw.json on startup)
 
 ---
@@ -291,6 +292,14 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### April 6, 2026 — Billing API port detection fix
+
+**Fix — billingRequest() uses getApiBase()** (`frontend/src/lib/billing.ts`, `frontend/src/lib/api.ts`):
+- `billingRequest()` had its own API base logic (`process.env.NEXT_PUBLIC_API_BASE_URL || ""`) that bypassed `getApiBase()` port detection
+- On macOS Docker Desktop (port 3000), billing calls went to `localhost:3000/api/billing/...` instead of `localhost:8000/api/billing/...`
+- Fixed by exporting `getApiBase()` from `api.ts` and importing it in `billing.ts`
+- All billing calls (activate, getPlan, getUsage, validate, startTrial) now correctly route to port 8000
+
 ### April 6, 2026 — Pre-v1.4.0 Fixes
 
 **Fix 1 — Onboarding health check fallback** (`backend/app/routers/health.py`):
@@ -304,6 +313,23 @@ After every Claude Code session that creates/modifies files:
 
 **Fix 3 — Docs redeployed** (helixnode-docs):
 - Verified docs already deployed with setup-env, setup-check, troubleshooting content
+
+**Fix 4 — Setup-check license link** (`frontend/src/app/setup-check/page.tsx`):
+- Changed fixUrl from `/settings/license` (404) to `/settings/billing` (correct route)
+
+**Fix 5 — Billing page license activation** (`frontend/src/app/settings/billing/page.tsx`):
+- Added "Activate License" card shown when no active license (plan is null, status not active, or no plan set)
+- License key input with HLX-XXXX-XXXX-XXXX-XXXX format, live validation indicator (check/X icon)
+- Activate button calls `billingApi.activate()`, same logic as onboarding license-step
+- Free trial section with email + org name inputs, calls `billingApi.startTrial()`
+- On success, calls `refreshPlan()` + `refreshUsage()` to update page in-place
+- Fixes gap where users who skipped/failed license activation during onboarding had no way to activate post-onboarding
+
+**Diagnostic findings (macOS install issues reported by Joe & Allen):**
+- Billing page route, Dockerfile static copies, DNS config, API endpoints all verified correct on v1.3.2
+- Root cause of reported "billing 404" was pre-v1.3.2 DNS failure — containers couldn't resolve api.helixnode.tech, causing billing API calls to fail silently
+- No additional code fixes needed for DNS — v1.3.2's `dns: [8.8.8.8, 1.1.1.1]` on all services resolves it
+- The missing license activation input on the billing page (Fix 5) was a real gap discovered during diagnosis
 
 **Fix 4 — install.sh verified** — already synced to web server
 

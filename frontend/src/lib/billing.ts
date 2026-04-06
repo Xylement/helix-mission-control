@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { getApiBase } from "./api";
 
 // ─── Plan tier definitions ───────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ async function billingRequest<T>(path: string, options: RequestInit = {}): Promi
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+  const apiBase = getApiBase();
   const res = await fetch(`${apiBase}/api${path}`, { ...options, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

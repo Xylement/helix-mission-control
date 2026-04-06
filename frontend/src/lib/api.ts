@@ -1,4 +1,4 @@
-const getApiBase = (): string => {
+export const getApiBase = (): string => {
   // 1. Explicit env variable (highest priority — set by user or docker-compose)
   if (process.env.NEXT_PUBLIC_API_BASE_URL) {
     return process.env.NEXT_PUBLIC_API_BASE_URL;
