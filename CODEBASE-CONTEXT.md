@@ -1,7 +1,7 @@
 # HELIX Mission Control — Codebase Context
 ## Living reference for Claude Code sessions
 ## Last updated: March 29, 2026 (v1.2.0 release)
-## Last updated: April 6, 2026 (v1.3.2 installation reliability, billing activation fix)
+## Last updated: April 7, 2026 (v1.3.3 installation & onboarding fixes)
 
 ---
 

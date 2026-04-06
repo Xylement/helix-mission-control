@@ -40,6 +40,9 @@ import {
   Settings,
   Camera,
   BookOpen,
+  Server,
+  Key,
+  Store,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -102,6 +105,13 @@ function StatusBadge({ status }: { status: string }) {
       return <Badge variant="secondary">{status}</Badge>;
   }
 }
+
+const CHANGELOG_133_ITEMS = [
+  { icon: Server, label: "Installation Reliability", desc: "Smart API base detection, valid gateway config generation, preserved model config on restart, correct OpenClaw schema sync." },
+  { icon: Key, label: "Onboarding & Licensing", desc: "License activation card, trial lock screen with free trial button, expiry warning banners, robust health check for pre-existing installs." },
+  { icon: Store, label: "Marketplace Fixes", desc: "Agent/skill/workflow/plugin installs correctly read names from manifest. Plugin capabilities auto-generate IDs. License key read from DB." },
+  { icon: Settings, label: "AI Model Sync", desc: "Changes from Settings > AI Models now auto-sync to OpenClaw gateway with correct schema." },
+];
 
 const CHANGELOG_131_ITEMS = [
   { icon: Globe, label: "Google Gemini", desc: "Native provider with Gemini 2.5 Pro, Flash, and Flash Lite models. Free API keys from Google AI Studio." },
@@ -467,6 +477,7 @@ export default function SystemSettingsPage() {
       </Card>
 
       {/* What's New */}
+      <ChangelogSection title="What's New in v1.3.3" items={CHANGELOG_133_ITEMS} defaultOpen={true} />
       <ChangelogSection title="What's New in v1.3.1" items={CHANGELOG_131_ITEMS} defaultOpen={false} />
       <ChangelogSection title="What's New in v1.3.0" items={CHANGELOG_130_ITEMS} defaultOpen={false} />
 
