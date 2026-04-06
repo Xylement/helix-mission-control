@@ -1405,7 +1405,7 @@ class OpenClawGateway:
                 "providers": {
                     provider: {
                         "baseUrl": base_url,
-                        "apiKey": f"${{{api_key_env}}}",
+                        "apiKey": api_key,
                         "api": api_type,
                         "models": [{
                             "id": model_name,
