@@ -1369,3 +1369,17 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Replaced three individual volume mounts (`workspaces`, `openclaw.json:rw`, `identity:ro`) with a single full-directory mount: `${HOME:-.}/.openclaw:/home/helix/.openclaw:rw`
 - Backend now has read-write access to the entire `~/.openclaw` tree, matching the gateway container's mount strategy
 - auth-profiles.json writes from `sync_model_config_from_db()` now persist to the host and are visible to the gateway
+
+### April 6, 2026 — AI Models Sync to OpenClaw Config
+
+**Problem:** The `ai_models` table (`/api/models/*` endpoints in `ai_models.py`) was completely disconnected from `sync_model_config_from_db()`. Saving a model via `PATCH /api/models/{id}` updated the DB but never wrote to `openclaw.json` or `auth-profiles.json`. The sync function only read from the `organization_settings` legacy table.
+
+**Fix (`backend/app/services/gateway.py` + `backend/app/routers/ai_models.py`):**
+- `sync_model_config_from_db()` now checks `ai_models` table first for default active model (`is_default=True`, `is_active=True`), falls back to `organization_settings` legacy fields
+- All `ai_models.py` mutation endpoints (create, update/PATCH, delete, set-default) now call `gateway.sync_model_config_from_db(force=True)` after DB commit
+- Telegram config still reads from `organization_settings` (unchanged)
+
+**Two model storage systems:**
+- `ai_models` table — multi-model CRUD, `/api/models/*` endpoints, used by Settings > AI Models UI
+- `organization_settings` table — legacy single-row config, `/api/settings/model-config` endpoint, used by onboarding
+- Sync priority: `ai_models` default > `organization_settings` fallback
