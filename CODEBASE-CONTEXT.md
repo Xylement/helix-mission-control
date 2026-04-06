@@ -269,6 +269,9 @@
 - Billing history is placeholder (links to Stripe Portal)
 - ~~No way to activate license key post-onboarding~~ — **FIXED** (activation card on billing page)
 - ~~Gateway config sync from DB to container needs restart~~ — **FIXED** (backend syncs model config from DB to openclaw.json on startup)
+- ~~Gateway sync had apiKey in models section + wrong API types for moonshot/anthropic~~ — **FIXED** (apiKey removed from provider config, OpenClaw api type map added: moonshot/anthropic → `anthropic-messages`)
+- ~~Gateway sync only wrote auth-profiles.json to existing agent dirs~~ — **FIXED** (now creates dirs from openclaw.json agents.list + existing on disk, writes auth-profiles.json to all)
+- ~~OPENCLAW_CONFIG_PATH in docker-compose.yml used host `${HOME}` path~~ — **FIXED** (must use container path, not host path — the env var is read inside the container)
 
 ---
 
@@ -291,6 +294,20 @@ After every Claude Code session that creates/modifies files:
 ---
 
 ## 11. Recent Changes
+
+### April 6, 2026 — Gateway sync writes correct OpenClaw config schema
+
+**Bug — `backend/app/services/gateway.py` `sync_model_config_from_db()`:**
+
+Four issues fixed in how the backend syncs model config from DB to the gateway container:
+
+1. **`apiKey` leaked into models section** — Removed `apiKey` from `config["models"]["providers"][provider]`. API keys belong only in per-agent `auth-profiles.json`, not in `openclaw.json` provider config.
+
+2. **Wrong API type for some providers** — Added explicit OpenClaw API type mapping (`openclaw_api_map`) instead of using `model_providers.py` registry values. Key differences: moonshot → `anthropic-messages` (was `openai-completions`), anthropic → `anthropic-messages` (was `anthropic`).
+
+3. **Agent defaults missing model alias** — Added `config["agents"]["defaults"]["models"]` with `{provider/model: {"alias": display_name}}` alongside the existing `model.primary` setting.
+
+4. **auth-profiles.json only written to existing agent dirs** — Now collects agent IDs from both `openclaw.json` `agents.list` AND existing directories on disk. Creates `agents/{id}/agent/` directories with `os.makedirs(exist_ok=True)` before writing auth-profiles.json. Previously skipped agents whose directories didn't exist yet.
 
 ### April 6, 2026 — Fix trial flag lost on license validation
 

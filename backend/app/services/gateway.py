@@ -1353,9 +1353,20 @@ class OpenClawGateway:
             # Determine API type and key env name from provider
             from app.services.model_providers import get_provider_config
             provider_config = get_provider_config(provider)
-            api_type = provider_config.get("api_type", "openai-completions")
             if not base_url:
                 base_url = provider_config.get("base_url", "")
+
+            # OpenClaw api type names (may differ from model_providers registry)
+            openclaw_api_map = {
+                "moonshot": "anthropic-messages",
+                "kimi_code": "anthropic-messages",
+                "anthropic": "anthropic-messages",
+                "openai": "openai-completions",
+                "gemini": "openai-completions",
+                "openrouter": "openai-completions",
+                "nvidia": "openai-completions",
+            }
+            api_type = openclaw_api_map.get(provider, "openai-completions")
 
             # Map provider to env var name for the API key
             key_env_map = {
@@ -1399,13 +1410,12 @@ class OpenClawGateway:
                 config["env"] = {}
             config["env"][api_key_env] = api_key
 
-            # Update models section
+            # Update models section (no apiKey here — keys go in per-agent auth-profiles.json)
             config["models"] = {
                 "mode": "merge",
                 "providers": {
                     provider: {
                         "baseUrl": base_url,
-                        "apiKey": api_key,
                         "api": api_type,
                         "models": [{
                             "id": model_name,
@@ -1420,12 +1430,16 @@ class OpenClawGateway:
                 },
             }
 
-            # Update agent defaults
+            # Update agent defaults — model primary + alias mapping
             if "agents" not in config:
                 config["agents"] = {}
             if "defaults" not in config["agents"]:
                 config["agents"]["defaults"] = {}
-            config["agents"]["defaults"]["model"] = {"primary": f"{provider}/{model_name}"}
+            full_model_id = f"{provider}/{model_name}"
+            config["agents"]["defaults"]["model"] = {"primary": full_model_id}
+            config["agents"]["defaults"]["models"] = {
+                full_model_id: {"alias": display_name}
+            }
 
             # Ensure gateway section exists (OpenClaw requires gateway.mode=local)
             if "gateway" not in config:
@@ -1486,46 +1500,49 @@ class OpenClawGateway:
 
             # Write auth-profiles.json with the actual API key into every
             # agent directory so OpenClaw can authenticate model API calls.
+            # Creates agent/agent/ directories if they don't exist yet.
             openclaw_home = os.path.dirname(config_path)  # e.g. /home/helix/.openclaw
             agents_dir = os.path.join(openclaw_home, "agents")
-            auth_profile_data = {
-                "version": 1,
-                "profiles": {
-                    auth_profile_key: {
-                        "type": "api_key",
-                        "provider": provider,
-                        "key": api_key,
-                    }
-                },
+            auth_profile_entry = {
+                "type": "api_key",
+                "provider": provider,
+                "key": api_key,
             }
-            agents_updated = 0
+
+            # Collect agent IDs from openclaw.json agents.list
+            agent_ids = set()
+            agents_list = config.get("agents", {}).get("list", [])
+            if isinstance(agents_list, list):
+                for agent_entry in agents_list:
+                    if isinstance(agent_entry, dict) and agent_entry.get("id"):
+                        agent_ids.add(agent_entry["id"])
+
+            # Also include any existing agent directories on disk
             if os.path.isdir(agents_dir):
                 for agent_dir_name in os.listdir(agents_dir):
-                    agent_identity_dir = os.path.join(
-                        agents_dir, agent_dir_name, "agent"
-                    )
-                    if not os.path.isdir(agent_identity_dir):
-                        continue
-                    auth_path = os.path.join(
-                        agent_identity_dir, "auth-profiles.json"
-                    )
-                    # Merge into existing auth-profiles.json to preserve
-                    # usage stats and other provider profiles
-                    existing = {}
-                    if os.path.exists(auth_path):
-                        try:
-                            with open(auth_path) as f:
-                                existing = json.load(f)
-                        except (json.JSONDecodeError, Exception):
-                            existing = {}
-                    existing.setdefault("version", 1)
-                    existing.setdefault("profiles", {})
-                    existing["profiles"][auth_profile_key] = (
-                        auth_profile_data["profiles"][auth_profile_key]
-                    )
-                    with open(auth_path, "w") as f:
-                        json.dump(existing, f, indent=2)
-                    agents_updated += 1
+                    if os.path.isdir(os.path.join(agents_dir, agent_dir_name)):
+                        agent_ids.add(agent_dir_name)
+
+            agents_updated = 0
+            for agent_id in agent_ids:
+                agent_identity_dir = os.path.join(agents_dir, agent_id, "agent")
+                os.makedirs(agent_identity_dir, exist_ok=True)
+                auth_path = os.path.join(agent_identity_dir, "auth-profiles.json")
+                # Merge into existing auth-profiles.json to preserve
+                # usage stats and other provider profiles
+                existing = {}
+                if os.path.exists(auth_path):
+                    try:
+                        with open(auth_path) as f:
+                            existing = json.load(f)
+                    except (json.JSONDecodeError, Exception):
+                        existing = {}
+                existing.setdefault("version", 1)
+                existing.setdefault("profiles", {})
+                existing["profiles"][auth_profile_key] = auth_profile_entry
+                with open(auth_path, "w") as f:
+                    json.dump(existing, f, indent=2)
+                agents_updated += 1
 
             logger.info(
                 "Synced model config from DB to openclaw.json: %s/%s "
