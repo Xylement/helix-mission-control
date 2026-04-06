@@ -292,6 +292,15 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### April 6, 2026 — Trial user license key upgrade input
+
+**Enhancement — Billing page** (`frontend/src/app/settings/billing/page.tsx`):
+- Added "Upgrade with License Key" inline section shown when user is on a trial (`plan.trial === true`)
+- Compact horizontal layout: label + license key input + Activate button
+- Placed between Feature Access card and Available Plans section
+- Reuses existing `handleActivateKey` logic, `licenseKey` state, and validation
+- Fixes gap where trial users who later received a paid license key had no way to enter it without the full activation card
+
 ### April 6, 2026 — Billing API port detection fix
 
 **Fix — billingRequest() uses getApiBase()** (`frontend/src/lib/billing.ts`, `frontend/src/lib/api.ts`):

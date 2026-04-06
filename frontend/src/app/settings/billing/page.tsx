@@ -519,6 +519,47 @@ export default function BillingPage() {
         </Card>
       )}
 
+      {/* Upgrade with License Key — shown for trial users */}
+      {plan?.trial && !needsActivation && (
+        <Card className="border-blue-500/20">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+              <div className="flex items-center gap-2 shrink-0">
+                <KeyRound className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+                <span className="text-sm font-medium">Upgrade with License Key</span>
+              </div>
+              <div className="flex flex-1 items-center gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    value={licenseKey}
+                    onChange={(e) => setLicenseKey(formatLicenseKey(e.target.value))}
+                    placeholder="HLX-XXXX-XXXX-XXXX-XXXX"
+                    className="font-mono text-sm pr-8"
+                  />
+                  {licenseKey && (
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                      {licenseKeyValid ? (
+                        <Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+                      ) : (
+                        <X className="h-4 w-4 text-red-500 dark:text-red-400" />
+                      )}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  className="bg-blue-500 hover:bg-blue-600 text-white cursor-pointer text-sm shrink-0"
+                  onClick={handleActivateKey}
+                  disabled={!licenseKeyValid || activatingKey}
+                >
+                  {activatingKey && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Activate
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Plans comparison */}
       <div id="plans">
         <div className="flex items-center justify-between mb-4">
