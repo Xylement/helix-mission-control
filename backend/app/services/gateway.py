@@ -1436,10 +1436,69 @@ class OpenClawGateway:
                     }
                 }
 
+            # Update auth profiles in openclaw.json so OpenClaw knows which
+            # credential profile to use for this provider
+            auth_profile_key = f"{provider}:default"
+            if "auth" not in config:
+                config["auth"] = {}
+            if "profiles" not in config["auth"]:
+                config["auth"]["profiles"] = {}
+            config["auth"]["profiles"][auth_profile_key] = {
+                "provider": provider,
+                "mode": "api_key",
+            }
+
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
 
-            logger.info("Synced model config from DB to openclaw.json: %s/%s", provider, model_name)
+            # Write auth-profiles.json with the actual API key into every
+            # agent directory so OpenClaw can authenticate model API calls.
+            openclaw_home = os.path.dirname(config_path)  # e.g. /home/helix/.openclaw
+            agents_dir = os.path.join(openclaw_home, "agents")
+            auth_profile_data = {
+                "version": 1,
+                "profiles": {
+                    auth_profile_key: {
+                        "type": "api_key",
+                        "provider": provider,
+                        "key": api_key,
+                    }
+                },
+            }
+            agents_updated = 0
+            if os.path.isdir(agents_dir):
+                for agent_dir_name in os.listdir(agents_dir):
+                    agent_identity_dir = os.path.join(
+                        agents_dir, agent_dir_name, "agent"
+                    )
+                    if not os.path.isdir(agent_identity_dir):
+                        continue
+                    auth_path = os.path.join(
+                        agent_identity_dir, "auth-profiles.json"
+                    )
+                    # Merge into existing auth-profiles.json to preserve
+                    # usage stats and other provider profiles
+                    existing = {}
+                    if os.path.exists(auth_path):
+                        try:
+                            with open(auth_path) as f:
+                                existing = json.load(f)
+                        except (json.JSONDecodeError, Exception):
+                            existing = {}
+                    existing.setdefault("version", 1)
+                    existing.setdefault("profiles", {})
+                    existing["profiles"][auth_profile_key] = (
+                        auth_profile_data["profiles"][auth_profile_key]
+                    )
+                    with open(auth_path, "w") as f:
+                        json.dump(existing, f, indent=2)
+                    agents_updated += 1
+
+            logger.info(
+                "Synced model config from DB to openclaw.json: %s/%s "
+                "(auth-profiles written to %d agents)",
+                provider, model_name, agents_updated,
+            )
 
         except Exception as e:
             logger.warning("Failed to sync model config from DB: %s", e)

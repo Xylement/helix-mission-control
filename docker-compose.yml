@@ -109,9 +109,7 @@ services:
       - LICENSE_SERVER_URL=${LICENSE_SERVER_URL:-https://api.helixnode.tech}
       - LICENSE_KEY=${LICENSE_KEY:-}
     volumes:
-      - ${HOME:-.}/.openclaw/workspaces:/home/helix/.openclaw/workspaces
-      - ${HOME:-.}/.openclaw/openclaw.json:/home/helix/.openclaw/openclaw.json:rw
-      - ${HOME:-.}/.openclaw/identity:/home/helix/.openclaw/identity:ro
+      - ${HOME:-.}/.openclaw:/home/helix/.openclaw:rw
       - uploads-data:/data/uploads
       - ./backups:/home/helix/backups
       - ./VERSION:/app/VERSION:ro
