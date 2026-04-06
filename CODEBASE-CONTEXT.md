@@ -292,6 +292,14 @@ After every Claude Code session that creates/modifies files:
 
 ## 11. Recent Changes
 
+### April 6, 2026 — Fix trial flag lost on license validation
+
+**Bug — `services/license_service.py` `validate()`:**
+- When `validate()` called the license server's `/v1/licenses/validate`, the response didn't include a `trial` field
+- `_cache_response()` defaulted `data.get("trial", False)` → `False`, overwriting the `trial=True` set during trial creation
+- This happened on every backend startup (lifespan) and every 24h (periodic_license_check), so trial users' billing page lost the "Upgrade with License Key" section and showed incorrect plan status
+- Fix: before caching, if the validate response has no `trial` key, preserve the existing `trial` and `trial_ends_at` values from the cache
+
 ### April 6, 2026 — Trial user license key upgrade input
 
 **Enhancement — Billing page** (`frontend/src/app/settings/billing/page.tsx`):

@@ -106,6 +106,13 @@ class LicenseService:
                 )
                 if resp.status_code == 200:
                     data = resp.json()
+                    # Preserve trial fields from cache when the license
+                    # server validate response doesn't include them
+                    if "trial" not in data:
+                        cached = await self._get_cached_or_default()
+                        data["trial"] = cached.get("trial", False)
+                        if not data.get("trial_ends_at"):
+                            data["trial_ends_at"] = cached.get("trial_ends_at")
                     try:
                         await self._cache_response(data, effective_key)
                     except Exception as cache_err:
