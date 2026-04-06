@@ -1268,9 +1268,11 @@ class OpenClawGateway:
 
 
     async def sync_model_config_from_db(self, force: bool = False):
-        """If MODEL_API_KEY env var is empty, read model config from org_settings
-        and write it to the openclaw.json config file for the gateway.
-        When force=True (called from settings/onboarding save), bypass guards."""
+        """Read the default active model config from DB and write it to
+        openclaw.json + auth-profiles.json for the gateway.
+        Checks ai_models table first (is_default=True, is_active=True),
+        falls back to organization_settings legacy fields.
+        When force=True (called from settings/model save), bypass guards."""
         import os
 
         if not force:
@@ -1285,32 +1287,63 @@ class OpenClawGateway:
 
         try:
             from app.core.encryption import decrypt_value
-            async with async_session() as db:
-                settings_row = (await db.execute(
-                    select(OrganizationSettings).limit(1)
-                )).scalar_one_or_none()
-                if not settings_row or not settings_row.model_api_key_encrypted:
-                    logger.info("No model config in DB — gateway will wait for onboarding")
-                    return
+            from app.models.ai_model import AIModel
 
-                provider = settings_row.model_provider or "moonshot"
-                model_name = settings_row.model_name or "kimi-k2.5"
-                api_key = decrypt_value(settings_row.model_api_key_encrypted)
-                base_url = settings_row.model_base_url or ""
-                display_name = settings_row.model_display_name or model_name
-                context_window = settings_row.model_context_window or 256000
-                max_tokens = settings_row.model_max_tokens or 8192
+            provider = None
+            model_name = None
+            api_key = None
+            base_url = ""
+            display_name = None
+            context_window = 256000
+            max_tokens = 8192
+            telegram_token = None
+            telegram_allowed = None
+
+            async with async_session() as db:
+                # 1) Try ai_models table first — default active model
+                default_model = (await db.execute(
+                    select(AIModel).where(
+                        AIModel.is_default == True,
+                        AIModel.is_active == True,
+                    ).limit(1)
+                )).scalar_one_or_none()
+
+                if default_model and default_model.api_key_encrypted:
+                    provider = default_model.provider
+                    model_name = default_model.model_name
+                    api_key = decrypt_value(default_model.api_key_encrypted)
+                    base_url = default_model.base_url or ""
+                    display_name = default_model.display_name or model_name
+                    logger.info("sync_model_config: using ai_models default: %s/%s", provider, model_name)
+                else:
+                    # 2) Fallback to organization_settings legacy fields
+                    settings_row = (await db.execute(
+                        select(OrganizationSettings).limit(1)
+                    )).scalar_one_or_none()
+                    if not settings_row or not settings_row.model_api_key_encrypted:
+                        logger.info("No model config in DB — gateway will wait for onboarding")
+                        return
+
+                    provider = settings_row.model_provider or "moonshot"
+                    model_name = settings_row.model_name or "kimi-k2.5"
+                    api_key = decrypt_value(settings_row.model_api_key_encrypted)
+                    base_url = settings_row.model_base_url or ""
+                    display_name = settings_row.model_display_name or model_name
+                    context_window = settings_row.model_context_window or 256000
+                    max_tokens = settings_row.model_max_tokens or 8192
+                    logger.info("sync_model_config: using organization_settings: %s/%s", provider, model_name)
 
                 # Read Telegram config from DB (only if env var not set)
-                telegram_token = None
-                telegram_allowed = None
                 if not os.environ.get("TELEGRAM_BOT_TOKEN"):
-                    if settings_row.telegram_bot_token_encrypted:
+                    settings_row_tg = (await db.execute(
+                        select(OrganizationSettings).limit(1)
+                    )).scalar_one_or_none()
+                    if settings_row_tg and settings_row_tg.telegram_bot_token_encrypted:
                         try:
-                            telegram_token = decrypt_value(settings_row.telegram_bot_token_encrypted)
+                            telegram_token = decrypt_value(settings_row_tg.telegram_bot_token_encrypted)
                         except Exception:
                             pass
-                    telegram_allowed = settings_row.telegram_allowed_user_ids
+                        telegram_allowed = settings_row_tg.telegram_allowed_user_ids
 
             # Kimi Code (Advanced) requires manual OpenClaw setup — skip sync
             if provider == "kimi_code":

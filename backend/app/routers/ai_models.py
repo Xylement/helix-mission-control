@@ -10,6 +10,7 @@ from app.core.deps import require_admin
 from app.core.encryption import encrypt_value, decrypt_value
 from app.models.ai_model import AIModel
 from app.schemas.ai_model import AIModelCreate, AIModelUpdate, AIModelOut
+from app.services.gateway import gateway
 
 router = APIRouter(prefix="/models", tags=["ai-models"])
 
@@ -69,6 +70,7 @@ async def create_model(
     db.add(model)
     await db.commit()
     await db.refresh(model)
+    await gateway.sync_model_config_from_db(force=True)
     return _model_to_out(model)
 
 
@@ -95,6 +97,7 @@ async def update_model(
         setattr(model, k, v)
     await db.commit()
     await db.refresh(model)
+    await gateway.sync_model_config_from_db(force=True)
     return _model_to_out(model)
 
 
@@ -113,6 +116,7 @@ async def delete_model(
         raise HTTPException(status_code=404, detail="Model not found")
     await db.delete(model)
     await db.commit()
+    await gateway.sync_model_config_from_db(force=True)
 
 
 @router.post("/{model_id}/test")
@@ -190,6 +194,7 @@ async def set_default_model(
     model.is_default = True
     await db.commit()
     await db.refresh(model)
+    await gateway.sync_model_config_from_db(force=True)
     return _model_to_out(model)
 
 
