@@ -13,7 +13,7 @@ import { PlanCard } from "@/components/billing/PlanCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Loader2, Check, X, KeyRound } from "lucide-react";
+import { Loader2, Check, X, KeyRound, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 export function TrialLockScreen() {
@@ -23,6 +23,9 @@ export function TrialLockScreen() {
   const [licenseKey, setLicenseKey] = useState("");
   const [activating, setActivating] = useState(false);
   const [, setCheckingOut] = useState(false);
+  const [trialEmail, setTrialEmail] = useState(user?.email || "");
+  const [trialOrgName, setTrialOrgName] = useState("");
+  const [startingTrial, setStartingTrial] = useState(false);
 
   if (!plan) return null;
 
@@ -57,6 +60,29 @@ export function TrialLockScreen() {
       toast.error(message);
     } finally {
       setActivating(false);
+    }
+  };
+
+  const handleStartTrial = async () => {
+    if (!trialEmail || !trialOrgName) {
+      toast.error("Email and organization name are required");
+      return;
+    }
+    setStartingTrial(true);
+    try {
+      await billingApi.startTrial({ email: trialEmail, org_name: trialOrgName });
+      toast.success("Free trial activated!");
+      await refresh();
+    } catch (err: unknown) {
+      const message =
+        typeof err === "object" && err !== null && "detail" in err
+          ? String((err as Record<string, unknown>).detail)
+          : typeof err === "object" && err !== null && "message" in err
+            ? String((err as Record<string, unknown>).message)
+            : "Failed to start trial";
+      toast.error(message);
+    } finally {
+      setStartingTrial(false);
     }
   };
 
@@ -102,6 +128,46 @@ export function TrialLockScreen() {
               : "Your agents and data are safe — upgrade to continue where you left off."}
           </p>
         </div>
+
+        {/* Free Trial CTA */}
+        {isNoLicense && (
+          <div className="max-w-md mx-auto mb-8">
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10">
+                  <Zap className="h-4 w-4 text-emerald-400" />
+                </div>
+                <h3 className="font-semibold text-white">Start 7-Day Free Trial</h3>
+              </div>
+              <p className="text-xs text-gray-400 mb-4">
+                Try HELIX with up to 5 agents and 3 team members. No credit card required.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  type="email"
+                  value={trialEmail}
+                  onChange={(e) => setTrialEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="text-sm bg-gray-900/50 border-white/10"
+                />
+                <Input
+                  value={trialOrgName}
+                  onChange={(e) => setTrialOrgName(e.target.value)}
+                  placeholder="Organization name"
+                  className="text-sm bg-gray-900/50 border-white/10"
+                />
+                <Button
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer whitespace-nowrap"
+                  onClick={handleStartTrial}
+                  disabled={startingTrial || !trialEmail || !trialOrgName}
+                >
+                  {startingTrial && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Start Free Trial
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Interval toggle */}
         <div className="flex justify-center mb-6">

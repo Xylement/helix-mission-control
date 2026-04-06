@@ -683,7 +683,7 @@ Applied to both production (`~/helix-mission-control/`) and staging (`~/helix-st
 **Frontend changes:**
 - `components/onboarding/license-step.tsx` — Removed "Skip for now" button; license step is now mandatory.
 - `app/onboarding/page.tsx` — License step (step 3) cannot be skipped; stepper prevents jumping past it.
-- `components/billing/TrialLockScreen.tsx` — Now shows lock screen for `no_license` status (in addition to expired/trial-expired).
+- `components/billing/TrialLockScreen.tsx` — Now shows lock screen for `no_license` status (in addition to expired/trial-expired). Includes a "Start 7-Day Free Trial" section (email + org name inputs, calls `billingApi.startTrial()`) shown when `isNoLicense` is true, placed above the plan cards. Email is pre-filled from the logged-in user.
 - `components/billing/PlanBanner.tsx` — Added banner for `no_license` status with "Activate" CTA.
 
 **Migration:** `011_widen_license_key_prefix.py` — Widens `license_key_prefix` from VARCHAR(20) to VARCHAR(30).
