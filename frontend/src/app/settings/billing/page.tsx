@@ -5,11 +5,14 @@ import { useSearchParams } from "next/navigation";
 import {
   useBillingPlan,
   useBillingUsage,
+  billingApi,
   PLAN_TIERS,
   FEATURE_MATRIX,
   getPlanRank,
   maskLicenseKey,
   formatPrice,
+  formatLicenseKey,
+  isValidLicenseKey,
   createCheckoutSession,
   openCustomerPortal,
 } from "@/lib/billing";
@@ -18,6 +21,7 @@ import { PlanCard } from "@/components/billing/PlanCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   CreditCard,
@@ -32,6 +36,9 @@ import {
   ChevronDown,
   Palette,
   AlertTriangle,
+  KeyRound,
+  Zap,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -73,13 +80,70 @@ function UsageBar({
 
 export default function BillingPage() {
   const { user } = useAuth();
-  const { plan, loading: planLoading } = useBillingPlan();
-  const { usage, loading: usageLoading } = useBillingUsage();
+  const { plan, loading: planLoading, refresh: refreshPlan } = useBillingPlan();
+  const { usage, loading: usageLoading, refresh: refreshUsage } = useBillingUsage();
   const [keyCopied, setKeyCopied] = useState(false);
   const [interval, setInterval] = useState<"monthly" | "annual">("monthly");
   const [whiteLabelOpen, setWhiteLabelOpen] = useState(false);
   const [, setCheckingOut] = useState(false);
   const searchParams = useSearchParams();
+
+  // License activation state
+  const [licenseKey, setLicenseKey] = useState("");
+  const [activatingKey, setActivatingKey] = useState(false);
+  const [trialEmail, setTrialEmail] = useState("");
+  const [trialOrgName, setTrialOrgName] = useState("");
+  const [startingTrial, setStartingTrial] = useState(false);
+
+  const licenseKeyValid = isValidLicenseKey(licenseKey);
+
+  const handleActivateKey = async () => {
+    if (!licenseKeyValid) return;
+    setActivatingKey(true);
+    try {
+      await billingApi.activate({ license_key: licenseKey });
+      toast.success("License activated!");
+      setLicenseKey("");
+      refreshPlan();
+      refreshUsage();
+    } catch (err: unknown) {
+      const message =
+        typeof err === "object" && err !== null && "detail" in err
+          ? String((err as Record<string, unknown>).detail)
+          : "Failed to activate license";
+      toast.error(message);
+    } finally {
+      setActivatingKey(false);
+    }
+  };
+
+  const handleStartTrial = async () => {
+    if (!trialEmail || !trialOrgName) {
+      toast.error("Email and organization name are required");
+      return;
+    }
+    setStartingTrial(true);
+    try {
+      await billingApi.startTrial({ email: trialEmail, org_name: trialOrgName });
+      toast.success("Free trial activated!");
+      setTrialEmail("");
+      setTrialOrgName("");
+      refreshPlan();
+      refreshUsage();
+    } catch (err: unknown) {
+      const message =
+        typeof err === "object" && err !== null && "detail" in err
+          ? String((err as Record<string, unknown>).detail)
+          : typeof err === "object" && err !== null && "message" in err
+            ? String((err as Record<string, unknown>).message)
+            : "Failed to start trial";
+      toast.error(message);
+    } finally {
+      setStartingTrial(false);
+    }
+  };
+
+  const needsActivation = !plan || !plan.status || plan.status === "expired" || !plan.plan;
 
   // Handle success/cancelled URL params from Stripe redirect
   useEffect(() => {
@@ -365,6 +429,95 @@ export default function BillingPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* License Activation — shown when no active license */}
+      {needsActivation && (
+        <Card className="border-blue-500/30 bg-blue-500/5">
+          <CardContent className="p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                <KeyRound className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Activate License</h2>
+                <p className="text-sm text-muted-foreground">
+                  Enter your license key or start a free trial to get started.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* License Key Input */}
+              <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+                  <h3 className="text-sm font-medium">Enter License Key</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Already purchased? Paste your license key below.
+                </p>
+                <div className="relative">
+                  <Input
+                    value={licenseKey}
+                    onChange={(e) => setLicenseKey(formatLicenseKey(e.target.value))}
+                    placeholder="HLX-XXXX-XXXX-XXXX-XXXX"
+                    className="font-mono text-sm pr-8"
+                  />
+                  {licenseKey && (
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                      {licenseKeyValid ? (
+                        <Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+                      ) : (
+                        <X className="h-4 w-4 text-red-500 dark:text-red-400" />
+                      )}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white cursor-pointer text-sm"
+                  onClick={handleActivateKey}
+                  disabled={!licenseKeyValid || activatingKey}
+                >
+                  {activatingKey && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Activate
+                </Button>
+              </div>
+
+              {/* Free Trial */}
+              <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+                  <h3 className="text-sm font-medium">Start 7-Day Free Trial</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Try with up to 5 agents and 3 team members. No credit card required.
+                </p>
+                <Input
+                  type="email"
+                  value={trialEmail}
+                  onChange={(e) => setTrialEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="text-sm"
+                />
+                <Input
+                  value={trialOrgName}
+                  onChange={(e) => setTrialOrgName(e.target.value)}
+                  placeholder="Organization name"
+                  className="text-sm"
+                />
+                <Button
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white cursor-pointer text-sm"
+                  onClick={handleStartTrial}
+                  disabled={startingTrial || !trialEmail || !trialOrgName}
+                >
+                  {startingTrial && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Start Free Trial
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Plans comparison */}
       <div id="plans">
