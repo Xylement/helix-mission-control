@@ -1391,3 +1391,11 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **Fix (`docker-compose.yml`):**
 - Hardcoded to `/home/helix/.openclaw/openclaw.json` — the container path, not the host path
 - Volume mount `${HOME:-.}/.openclaw:/home/helix/.openclaw:rw` maps host dir to this path regardless of host `HOME`
+
+### April 6, 2026 — Write Actual API Key in Providers Config
+
+**Problem:** `sync_model_config_from_db()` wrote `"apiKey": "${GEMINI_API_KEY}"` (env var placeholder) in the `models.providers` section of `openclaw.json`. OpenClaw needs the actual decrypted key there, not an env var reference. The key was correctly placed in the `env` section but the providers section referenced it indirectly.
+
+**Fix (`backend/app/services/gateway.py`):**
+- Changed `"apiKey": f"${{{api_key_env}}}"` to `"apiKey": api_key` — writes the real decrypted key directly
+- The `env` section still gets the key for backward compatibility with entrypoint-generated configs
