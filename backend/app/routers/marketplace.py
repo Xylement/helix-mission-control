@@ -195,6 +195,30 @@ async def install_template(
             result = await install_svc.install_department_pack(
                 org_id, user.id, body.template_slug, body.customizations
             )
+        elif template_type == "plugin":
+            from app.services.plugin_runtime import PluginRuntime
+            from app.services.install_service import _normalize_plugin_manifest
+            runtime = PluginRuntime(db, LicenseService(db))
+            manifest = _normalize_plugin_manifest(manifest)
+            plugin = await runtime.install_plugin(org_id, manifest, body.template_slug, user.id)
+            try:
+                template_info = await mp.get_template(body.template_slug)
+                await mp.record_install(
+                    org_id=org_id, template_slug=body.template_slug,
+                    template_type="plugin", template_name=template_info.get("name", plugin.name),
+                    template_version=template_info.get("version", "1.0.0"),
+                    manifest=manifest, local_resource_id=plugin.id,
+                    local_resource_type="plugin", installed_by=user.id,
+                )
+                await mp.log_install_to_registry(body.template_slug)
+            except Exception as e:
+                logger.warning("Failed to record plugin marketplace install: %s", e)
+            await db.commit()
+            result = {"success": True, "plugin_id": plugin.id, "plugin_name": plugin.name, "template_slug": body.template_slug}
+        elif template_type == "workflow":
+            from app.services.workflow_install_service import WorkflowInstallService
+            wf_svc = WorkflowInstallService(db, mp, LicenseService(db))
+            result = await wf_svc.install(org_id, user.id, body.template_slug, body.customizations.get("agent_mapping") if body.customizations else None)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported template type: {template_type}")
 

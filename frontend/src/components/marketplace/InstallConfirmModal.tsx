@@ -18,6 +18,8 @@ import {
   Loader2,
   Bot,
   BookOpen,
+  Plug,
+  Workflow,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -62,7 +64,9 @@ export function InstallConfirmModal({ slug, templateName, templateType, onClose,
   };
 
   const isAgent = templateType === "agent_template" || templateType === "agent";
-  const Icon = isAgent ? Bot : BookOpen;
+  const isPlugin = templateType === "plugin";
+  const isWorkflow = templateType === "workflow";
+  const Icon = isAgent ? Bot : isPlugin ? Plug : isWorkflow ? Workflow : BookOpen;
 
   return (
     <Dialog open onOpenChange={() => !installing && onClose()}>
@@ -72,6 +76,10 @@ export function InstallConfirmModal({ slug, templateName, templateType, onClose,
           <DialogDescription>
             {isAgent
               ? "This will create an agent with its department, board, and skills."
+              : isPlugin
+              ? "This will install a plugin in your workspace."
+              : isWorkflow
+              ? "This will create a workflow in your workspace."
               : "This will create a new skill in your workspace."}
           </DialogDescription>
         </DialogHeader>
@@ -121,10 +129,15 @@ export function InstallConfirmModal({ slug, templateName, templateType, onClose,
               {!isAgent && (
                 <div className="ml-6 space-y-1 text-muted-foreground">
                   <p>
-                    Skill: <span className="text-foreground font-medium">{templateName}</span>
+                    {isPlugin ? "Plugin" : isWorkflow ? "Workflow" : "Skill"}:{" "}
+                    <span className="text-foreground font-medium">{templateName}</span>
                   </p>
                   <p className="text-xs">
-                    You can assign this skill to agents after installation.
+                    {isPlugin
+                      ? "You can assign this plugin to agents after installation."
+                      : isWorkflow
+                      ? "You can configure and run this workflow after installation."
+                      : "You can assign this skill to agents after installation."}
                   </p>
                 </div>
               )}

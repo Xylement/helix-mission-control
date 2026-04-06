@@ -548,6 +548,18 @@ class InstallService:
                 await self.skill_service.delete_skill(record.local_resource_id)
             except ValueError:
                 pass  # Skill already deleted
+        elif record.local_resource_type == "plugin":
+            from app.services.plugin_runtime import PluginRuntime
+            runtime = PluginRuntime(self.db, self.license_service)
+            try:
+                await runtime.uninstall_plugin(record.local_resource_id, org_id)
+            except Exception:
+                pass  # Plugin already deleted
+        elif record.local_resource_type == "workflow":
+            from app.models.workflow import Workflow
+            wf = await self.db.get(Workflow, record.local_resource_id)
+            if wf:
+                await self.db.delete(wf)
         elif record.local_resource_type == "pack":
             # Uninstall all included templates
             pack_manifest = record.manifest or {}

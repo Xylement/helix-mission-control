@@ -1472,3 +1472,20 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 **Problem:** `marketplace_service.py` imported `LICENSE_KEY` as a module-level constant from `license_service.py` (`os.getenv("LICENSE_KEY", "")`). On fresh installs without the env var set, every `X-License-Key` header sent to the registry was empty — install/uninstall tracking, reviews, submissions, and community profile calls all silently failed auth on the license server.
 
 **Fix:** `MarketplaceService` now uses an async `_auth_headers()` helper that calls `self.license_service._get_effective_license_key()` — checks env var first, falls back to `license_cache.license_key_prefix` in DB (populated during onboarding/trial activation). All 12 authenticated registry calls use this instead of the static constant.
+
+### April 6, 2026 — Marketplace Install Handles Plugin and Workflow Types
+
+**Problem:** `POST /api/marketplace/install` only routed `agent_template`, `skill`, and `department_pack` types. Plugin and workflow templates hit the `else` branch returning "Unsupported template type: plugin/workflow". Plugin install only worked via the separate `POST /api/plugins/install` endpoint. Frontend `InstallConfirmModal` was binary (agent or skill) — plugins and workflows showed "This will create: Skill".
+
+**Backend fix (`routers/marketplace.py`):**
+- Added `plugin` case: imports `PluginRuntime`, normalizes manifest, calls `runtime.install_plugin()`, records install + logs to registry.
+- Added `workflow` case: imports `WorkflowInstallService`, delegates to `wf_svc.install()`.
+
+**Backend fix (`services/install_service.py` — uninstall):**
+- Added `plugin` resource type: delegates to `PluginRuntime.uninstall_plugin()`.
+- Added `workflow` resource type: deletes the `Workflow` model directly.
+
+**Frontend fix (`components/marketplace/InstallConfirmModal.tsx`):**
+- Added `isPlugin` and `isWorkflow` flags alongside `isAgent`.
+- Icon: `Plug` for plugins, `Workflow` for workflows (imported from lucide-react).
+- Description and "This will create:" label now show the correct type (Plugin/Workflow/Skill).
