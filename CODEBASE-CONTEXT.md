@@ -1360,3 +1360,12 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - Replaced invalid `"server"` block with a proper `"gateway"` section containing `mode`, `port`, `bind`, and `auth` fields
 - Minimal config now matches the structure used by the full config generation path
 - Gateway starts correctly in waiting mode on fresh installs until a model key is configured via onboarding
+
+### April 6, 2026 — Backend OpenClaw Volume Mount Fix
+
+**Problem:** Backend container mounted individual `~/.openclaw` sub-paths (openclaw.json file, workspaces/, identity/ read-only) instead of the full directory. The `sync_model_config_from_db()` function writes auth-profiles.json to `agents/*/agent/auth-profiles.json`, but the `agents/` directory was not mounted — writes went to the container filesystem and were invisible to the gateway container (which mounts the full `~/.openclaw` directory).
+
+**Fix (`docker-compose.yml`):**
+- Replaced three individual volume mounts (`workspaces`, `openclaw.json:rw`, `identity:ro`) with a single full-directory mount: `${HOME:-.}/.openclaw:/home/helix/.openclaw:rw`
+- Backend now has read-write access to the entire `~/.openclaw` tree, matching the gateway container's mount strategy
+- auth-profiles.json writes from `sync_model_config_from_db()` now persist to the host and are visible to the gateway
