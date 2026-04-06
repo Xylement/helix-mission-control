@@ -50,12 +50,12 @@ services:
       - MODEL_CONTEXT_WINDOW=${MODEL_CONTEXT_WINDOW:-256000}
       - MODEL_MAX_TOKENS=${MODEL_MAX_TOKENS:-8192}
       - GATEWAY_PORT=${GATEWAY_PORT:-18789}
-      - GATEWAY_TOKEN=${GATEWAY_TOKEN}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-default-gateway-token}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_ALLOWED_USER_IDS=${TELEGRAM_ALLOWED_USER_IDS:-}
-      - GENERATE_CONFIG=${GENERATE_CONFIG:-false}
+      - GENERATE_CONFIG=${GENERATE_CONFIG:-true}
       - MC_API_BASE=http://backend:8000
-      - MC_SERVICE_TOKEN=${SERVICE_TOKEN}
+      - MC_SERVICE_TOKEN=${SERVICE_TOKEN:-}
     volumes:
       - /home/helix/.openclaw-staging:/home/openclaw/.openclaw
     networks:
@@ -88,7 +88,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-helix_jwt_secret_change_me_in_production}
       - ENVIRONMENT=production
       - OPENCLAW_GATEWAY_URL=ws://gateway:18789
-      - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
+      - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN:-default-gateway-token}
       - OPENCLAW_CONFIG_PATH=/home/helix/.openclaw-staging/openclaw.json
       - ENV_FILE_PATH=/home/helix/helix-staging/.env
       - COMPOSE_PROJECT_DIR=/home/helix/helix-staging
@@ -135,9 +135,7 @@ services:
     ports:
       - "3100:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-auto}
       - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-}
-      - BACKEND_URL=http://backend:8000
     healthcheck:
       test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3000 || exit 1"]
       interval: 30s

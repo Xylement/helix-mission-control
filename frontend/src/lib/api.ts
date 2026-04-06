@@ -1,16 +1,23 @@
 const getApiBase = (): string => {
-  // 1. Explicit env variable (set at build time or in .env.local)
+  // 1. Explicit env variable (highest priority — set by user or docker-compose)
   if (process.env.NEXT_PUBLIC_API_BASE_URL) {
     return process.env.NEXT_PUBLIC_API_BASE_URL;
   }
 
-  // 2. Server-side: use internal Docker network URL
-  if (typeof window === 'undefined') {
+  // 2. Client-side (browser): always use same-origin relative path
+  // This works with Nginx/Caddy reverse proxy AND with direct port access
+  if (typeof window !== 'undefined') {
+    // If accessing on port 3000, redirect API calls to port 8000 on same host
+    const loc = window.location;
+    if (loc.port === '3000') {
+      return `${loc.protocol}//${loc.hostname}:8000`;
+    }
+    // Behind reverse proxy (port 80/443) — use relative path
     return '';
   }
 
-  // 3. Client-side: use relative path (works behind Nginx reverse proxy)
-  return '';
+  // 3. Server-side (SSR): use Docker internal network
+  return 'http://backend:8000';
 };
 
 const API_BASE = getApiBase();
@@ -769,9 +776,28 @@ export const api = {
     request<Task[]>(`/tasks/${taskId}/subtasks`),
   getDelegationTree: (taskId: number) =>
     request<DelegationTreeNode>(`/tasks/${taskId}/delegation-tree`),
+
+  // Setup check (no auth required)
+  getSetupCheck: async (): Promise<SetupCheckResponse> => {
+    const base = getApiBase();
+    const res = await fetch(`${base}/api/health/setup`);
+    return res.json();
+  },
 };
 
 // Types
+
+export interface SetupCheckItem {
+  ok: boolean;
+  message: string;
+}
+
+export interface SetupCheckResponse {
+  status: string;
+  checks: Record<string, SetupCheckItem>;
+  ready: boolean;
+  next_step: string | null;
+}
 export interface User {
   id: number;
   name: string;

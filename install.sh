@@ -44,7 +44,7 @@ if [[ "$OSTYPE" == "darwin"* ]] && [ "$(id -u)" -eq 0 ]; then
 fi
 
 # === Configuration ===
-HELIX_VERSION="1.1.0"
+HELIX_VERSION="1.3.2"
 HELIX_REPO="https://github.com/Xylement/helix-mission-control.git"
 HELIX_BRANCH="main"
 INSTALL_DIR="/home/helix/helix-mission-control"
@@ -457,7 +457,7 @@ JWT_SECRET=${JWT_SECRET}
 SERVICE_TOKEN=${SERVICE_TOKEN}
 
 # === Frontend ===
-NEXT_PUBLIC_API_URL=auto
+NEXT_PUBLIC_API_BASE_URL=
 
 # === CORS ===
 CORS_ORIGINS=http://localhost:3000
@@ -466,10 +466,6 @@ CORS_ORIGINS=http://localhost:3000
 LOG_LEVEL=info
 MAX_AGENTS=50
 GENERATE_CONFIG=true
-
-# === Legacy ===
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-CLERK_SECRET_KEY=
 ENVFILE
 }
 
@@ -583,10 +579,6 @@ start_helix_linux() {
         exit 1
     fi
 
-    # Run database migrations
-    log "Running database migrations..."
-    sudo -u "$HELIX_USER" docker compose exec -T backend alembic upgrade head || true
-
     # Fix workspace ownership — backend creates dirs as root, gateway runs as UID 1001
     log "Fixing openclaw workspace permissions..."
     chown -R 1001:1001 /home/$HELIX_USER/.openclaw
@@ -603,24 +595,28 @@ install_updater_linux() {
     chown "$HELIX_USER:$HELIX_USER" "${INSTALL_DIR}/data"
     chmod +x "${INSTALL_DIR}/update-daemon.sh"
 
-    if [ ! -f /etc/systemd/system/helix-updater.service ]; then
-        cat > /etc/systemd/system/helix-updater.service << UPDATER_EOF
+    cat > /etc/systemd/system/helix-updater.service << UPDATER_EOF
 [Unit]
-Description=HELIX Mission Control Updater
+Description=HELIX Mission Control Update Daemon
 After=docker.service
+Requires=docker.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/update-daemon.sh
-Restart=always
+ExecStart=/bin/bash ${INSTALL_DIR}/update-daemon.sh
+Restart=on-failure
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=helix-updater
+Environment=HOME=/home/helix
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 [Install]
 WantedBy=multi-user.target
 UPDATER_EOF
-    fi
 
     systemctl daemon-reload
     systemctl enable helix-updater 2>/dev/null || true
