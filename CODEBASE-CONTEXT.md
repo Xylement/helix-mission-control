@@ -1383,3 +1383,11 @@ All columns, constraints, indexes, foreign keys, and unique constraints match cu
 - `ai_models` table — multi-model CRUD, `/api/models/*` endpoints, used by Settings > AI Models UI
 - `organization_settings` table — legacy single-row config, `/api/settings/model-config` endpoint, used by onboarding
 - Sync priority: `ai_models` default > `organization_settings` fallback
+
+### April 6, 2026 — OPENCLAW_CONFIG_PATH Container Path Fix
+
+**Problem:** `OPENCLAW_CONFIG_PATH` env var in `docker-compose.yml` was set to `${HOME:-.}/.openclaw/openclaw.json`, which resolves to the **host** path at compose-time. On this host it happened to match the container mount target (`/home/helix/.openclaw/openclaw.json`), but would break if `HOME` differs (e.g. different deploy user).
+
+**Fix (`docker-compose.yml`):**
+- Hardcoded to `/home/helix/.openclaw/openclaw.json` — the container path, not the host path
+- Volume mount `${HOME:-.}/.openclaw:/home/helix/.openclaw:rw` maps host dir to this path regardless of host `HOME`
