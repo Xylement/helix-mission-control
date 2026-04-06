@@ -57,7 +57,7 @@ services:
       - MC_API_BASE=http://backend:8000
       - MC_SERVICE_TOKEN=${SERVICE_TOKEN:-}
     volumes:
-      - /home/helix/.openclaw-staging:/home/openclaw/.openclaw
+      - ${HOME:-.}/.openclaw-staging:/home/openclaw/.openclaw
     networks:
       - helix-network
     healthcheck:
@@ -89,9 +89,9 @@ services:
       - ENVIRONMENT=production
       - OPENCLAW_GATEWAY_URL=ws://gateway:18789
       - OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN:-default-gateway-token}
-      - OPENCLAW_CONFIG_PATH=/home/helix/.openclaw-staging/openclaw.json
-      - ENV_FILE_PATH=/home/helix/helix-staging/.env
-      - COMPOSE_PROJECT_DIR=/home/helix/helix-staging
+      - OPENCLAW_CONFIG_PATH=${HOME:-.}/.openclaw-staging/openclaw.json
+      - ENV_FILE_PATH=${PWD:-.}/.env
+      - COMPOSE_PROJECT_DIR=${PWD:-.}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - HELIX_SERVICE_TOKEN=${SERVICE_TOKEN}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
@@ -103,7 +103,7 @@ services:
       - LICENSE_SERVER_URL=${LICENSE_SERVER_URL:-https://api.helixnode.tech}
       - LICENSE_KEY=${LICENSE_KEY:-}
     volumes:
-      - /home/helix/.openclaw-staging:/home/helix/.openclaw-staging:rw
+      - ${HOME:-.}/.openclaw-staging:/home/helix/.openclaw-staging:rw
       - uploads-data:/data/uploads
       - ./backups:/home/helix/backups
       - ./VERSION:/app/VERSION:ro
